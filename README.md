@@ -55,7 +55,8 @@ We welcome contributions! Feel free to fork the repo, submit pull requests, or s
 ## 📬 Contact
 
 For support, collaboration, or business inquiries:  
-gruop:https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk  
+ Join the whatsApp gruop for more information 
+:https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk  
 📱 WhatsApp: [Chat with us](https://wa.me/254757717976)
 
 ---
