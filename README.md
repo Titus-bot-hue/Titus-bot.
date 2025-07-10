@@ -2,7 +2,7 @@
 
 Welcome to **Dans XM TECH** — a cutting-edge WhatsApp bot framework designed for scalability, monetization, and seamless user engagement. Whether you're building subscription-based services or integrating payment systems like **M-Pesa** and **Binance**, this repo is your launchpad to automation excellence.
 
-![Intro Image](https://www.linkedin.com/posts/xmodulo_network-virtualization-is-a-networking-technology-activity-7290716722980880385-5k9v) <!-- Replace with your preferred hosted image URL -->
+![Intro Image](https://www.linkedin.com/posts/xmodulo_network-virtualization-is-a-networking-technology-activity-7290716722980880385-5k9v) 
 
 ---
 
