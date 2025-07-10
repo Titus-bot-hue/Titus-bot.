@@ -1,8 +1,8 @@
 # 🧠 Dans XM TECH
 
+![Intro Image](https://www.youtube.com/watch?v=gklo0DUX0vU) <!-- Replace with a hosted image URL if needed -->
+
 Welcome to **Dans XM TECH** — a cutting-edge WhatsApp bot framework designed for scalability, monetization, and seamless user engagement. Whether you're building subscription-based services or integrating payment systems like **M-Pesa** and **Binance**, this repo is your launchpad to automation excellence.
-
-
 
 ## 🚀 Features
 
@@ -12,22 +12,16 @@ Welcome to **Dans XM TECH** — a cutting-edge WhatsApp bot framework designed f
 - Built-in user engagement strategies
 - Modular design for easy customization
 
----
-
 ## 📱 WhatsApp Channel
 
 Stay updated and connect with the community via our official WhatsApp channel:  
-**[Join Dans XM TECH on WhatsApp](https://wa.me/254757717976)** <!-- Replace with your actual channel link -->
-
----
+**[Join Dans XM TECH on WhatsApp](https://wa.me/254757717976)**
 
 ## 🛠 Frameworks Used
 
 - **Baileys** & **Venom** for WhatsApp bot development
 - **Node.js** for backend logic
 - **Render** for cloud deployment
-
----
 
 ## 💡 Getting Started
 
@@ -42,27 +36,19 @@ Stay updated and connect with the community via our official WhatsApp channel:
 4. Run the bot  
    `npm start`
 
----
-
 ## 🤝 Contributing
 
 We welcome contributions! Feel free to fork the repo, submit pull requests, or suggest new features.
 
----
-
 ## 📬 Contact
 
 For support, collaboration, or business inquiries:  
- Join the whatsApp gruop for more information 
-:https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk  
+Join the WhatsApp group for more information:  
+[Dans XM TECH Group](https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk)  
 📱 WhatsApp: [Chat with us](https://wa.me/254757717976)
-
----
 
 ## 🧭 License
 
 MIT License — feel free to use, modify, and share.
-
----
 
 > _Dans XM TECH is more than a bot — it's a movement toward smarter automation and monetized engagement._
