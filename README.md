@@ -44,7 +44,7 @@ We welcome contributions! Feel free to fork the repo, submit pull requests, or s
 
 For support, collaboration, or business inquiries:  
 Join the WhatsApp group for more information:  
-[Dans XM TECH Group](https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk)  
+[Dans XM TECH Whatapp Group](https://chat.whatsapp.com/E5t51Meb0knLqHBRbQweLk)  
 📱 WhatsApp: [Chat with us](https://wa.me/254757717976)
 
 ## 🧭 License
