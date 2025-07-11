@@ -2,7 +2,11 @@
 
 ![Intro Image](# 🧠 Dans XM TECH
 
-![Dans XM TECH](https://files.catbox.moe/gk91cy.jpg)
+![Dans XM TECH](# 🧠 Dans XM TECH
+
+![Dans XM TECH](https://files.catbox.moe/yv2zlv.png)
+
+> Developed By Dans Dans)
 
 > Developed By Dans Dans) <!-- Replace with a hosted image URL if needed -->
 
