@@ -1,6 +1,6 @@
 # 🧠 Dans XM TECH
 
-![Intro Image](https://www.youtube.com/watch?v=gklo0DUX0vU) <!-- Replace with a hosted image URL if needed -->
+![Intro Image](https://files.catbox.moe/gk91cy.jpg) <!-- Replace with a hosted image URL if needed -->
 
 Welcome to **Dans XM TECH** — a cutting-edge WhatsApp bot framework designed for scalability, monetization, and seamless user engagement. Whether you're building subscription-based services or integrating payment systems like **M-Pesa** and **Binance**, this repo is your launchpad to automation excellence.
 
