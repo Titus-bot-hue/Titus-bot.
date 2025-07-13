@@ -70,10 +70,15 @@ async function retry(fn, retries = 3) {
   }
 })();
 
-// Minimal server to keep Render alive
+// Minimal server with health check for Render
 http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('DansDans bot is running');
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('DansDans bot is running');
+  }
 }).listen(process.env.PORT || 3000, () => {
   logger.info(`🌐 Server listening on port ${process.env.PORT || 3000}`);
 });
