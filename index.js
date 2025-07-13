@@ -2,49 +2,71 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import http from 'http';
+import dotenv from 'dotenv';
+import pino from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+
+// Load environment variables
+dotenv.config();
+
+// Logger setup
+const logger = pino();
 
 // Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Local paths
+// Paths and URLs
 const baseDir = path.join(__dirname, 'modules');
 const mainModule = 'main.js';
 const filePath = path.join(baseDir, mainModule);
-const fileUrl = 'https://raw.githubusercontent.com/Dans3101/Dans-dan/main/main.js';
+const fileUrl = process.env.MAIN_MODULE_URL || 'https://raw.githubusercontent.com/Dans3101/Dans-dan/main/main.js';
 
 // Ensure modules directory exists
 if (!fs.existsSync(baseDir)) {
   fs.mkdirSync(baseDir);
+  logger.info(`📁 Created directory: ${baseDir}`);
 }
 
 // Download and save the main module
 async function downloadAndSave(url, filepath) {
   try {
-    const response = await axios.get(url);
+    const response = await axios.get(url, { responseType: 'text' });
     fs.writeFileSync(filepath, response.data);
-    console.log(`✅ Saved ${filepath}`);
+    logger.info(`✅ Saved ${filepath}`);
   } catch (error) {
-    console.error(`❌ Failed to download ${url}:`, error.message);
+    logger.error(`❌ Failed to download ${url}: ${error.message}`);
+    throw error;
+  }
+}
+
+// Retry wrapper
+async function retry(fn, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      logger.warn(`🔁 Retry ${i + 1}/${retries} failed: ${err.message}`);
+      if (i === retries - 1) throw err;
+    }
   }
 }
 
 // Load the module and start the bot
 (async () => {
-  await downloadAndSave(fileUrl, filePath);
+  try {
+    await retry(() => downloadAndSave(fileUrl, filePath));
 
-  if (fs.existsSync(filePath)) {
-    const moduleUrl = `file://${filePath}`;
-    try {
+    if (fs.existsSync(filePath)) {
+      const moduleUrl = `file://${filePath}`;
       const mod = await import(moduleUrl);
-      console.log('✅ Main module loaded');
-    } catch (err) {
-      console.error('❌ Failed to import main module:', err.message);
+      logger.info('✅ Main module loaded');
+    } else {
+      logger.error('❌ Main module not found.');
     }
-  } else {
-    console.error('❌ Main module not found.');
+  } catch (err) {
+    logger.error(`🚨 Fatal error: ${err.message}`);
   }
 })();
 
@@ -53,5 +75,5 @@ http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('DansDans bot is running');
 }).listen(process.env.PORT || 3000, () => {
-  console.log(`🌐 Server listening on port ${process.env.PORT || 3000}`);
+  logger.info(`🌐 Server listening on port ${process.env.PORT || 3000}`);
 });
