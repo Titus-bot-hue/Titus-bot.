@@ -5,7 +5,8 @@ import http from 'http';
 import dotenv from 'dotenv';
 import pino from 'pino';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
+import { createRequire } from 'module';
 
 // Load environment variables
 dotenv.config();
@@ -18,9 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Paths and URLs
-const baseDir = path.join(__dirname, 'modules');
+const baseDir = join(__dirname, 'modules');
 const mainModule = 'main.js';
-const filePath = path.join(baseDir, mainModule);
+const filePath = join(baseDir, mainModule);
 const fileUrl = process.env.MAIN_MODULE_URL || 'https://raw.githubusercontent.com/Dans3101/Dans-dan/main/main.js';
 
 // Ensure modules directory exists
@@ -59,9 +60,9 @@ async function retry(fn, retries = 3) {
     await retry(() => downloadAndSave(fileUrl, filePath));
 
     if (fs.existsSync(filePath)) {
-      const moduleUrl = `file://${filePath}`;
-      const mod = await import(moduleUrl);
-      logger.info('✅ Main module loaded');
+      const require = createRequire(import.meta.url);
+      const mod = require(filePath);
+      logger.info('✅ Main module loaded using CommonJS');
     } else {
       logger.error('❌ Main module not found.');
     }
