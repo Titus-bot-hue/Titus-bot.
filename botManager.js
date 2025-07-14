@@ -1,19 +1,22 @@
-import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode-terminal';
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  makeInMemoryStore,
+} from '@whiskeysockets/baileys';
+import qrcode from 'qrcode';
 import NodeCache from 'node-cache';
 import path from 'path';
 import fs from 'fs';
 
 // Session cache
 const sessionCache = new NodeCache();
+const store = makeInMemoryStore({});
 
-// Start a new WhatsApp session
+// Start a WhatsApp session
 export async function startSession(sessionId = 'default') {
   const sessionDir = path.join('./sessions', sessionId);
-
-  if (!fs.existsSync(sessionDir)) {
-    fs.mkdirSync(sessionDir, { recursive: true });
-  }
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   const { version } = await fetchLatestBaileysVersion();
@@ -21,19 +24,23 @@ export async function startSession(sessionId = 'default') {
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true,
+    printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: true,
     connectTimeoutMs: 60_000,
     defaultQueryTimeoutMs: 60_000,
+    msgRetryCount: 3,
+    getMessage: async () => undefined,
   });
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
+  store.bind(sock.ev);
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, qr } = update;
 
     if (qr) {
-      console.log(`📱 Scan this QR for session "${sessionId}":`);
-      qrcode.generate(qr, { small: true });
+      const qrImage = await qrcode.toBuffer(qr);
+      sessionCache.set(`${sessionId}_qr`, qrImage);
     }
 
     if (connection === 'open') {
@@ -48,18 +55,28 @@ export async function startSession(sessionId = 'default') {
   });
 
   sock.ev.on('creds.update', saveCreds);
-}
 
-// Send a message using a session
-export async function sendMessage(sessionId, jid, message) {
-  const sock = sessionCache.get(sessionId);
-  if (!sock) throw new Error(`Session "${sessionId}" not found`);
+  // Listen for .pair command
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+    const text = msg.message?.conversation || '';
+    const sender = msg.key.remoteJid;
 
-  await sock.sendMessage(jid, { text: message });
-  console.log(`📤 Message sent to ${jid} via session "${sessionId}"`);
-}
+    if (text.startsWith('.pair')) {
+      const userSessionId = `user_${sender.replace('@s.whatsapp.net', '')}`;
+      await startSession(userSessionId);
 
-// List active sessions
-export function listSessions() {
-  return sessionCache.keys();
+      const qrImage = sessionCache.get(`${userSessionId}_qr`);
+      if (qrImage) {
+        await sock.sendMessage(sender, {
+          image: qrImage,
+          caption: `📲 Scan this QR to link your WhatsApp account.`,
+        });
+      } else {
+        await sock.sendMessage(sender, {
+          text: `⚠️ QR code not available. Try again in a few seconds.`,
+        });
+      }
+    }
+  });
 }
