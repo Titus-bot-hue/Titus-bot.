@@ -8,12 +8,10 @@ const {
   makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
 } = baileys;
 
 // Session cache
 const sessionCache = new NodeCache();
-const store = makeInMemoryStore({});
 
 // Start a WhatsApp session
 export async function startSession(sessionId = 'default') {
@@ -34,8 +32,6 @@ export async function startSession(sessionId = 'default') {
     msgRetryCount: 3,
     getMessage: async () => undefined,
   });
-
-  store.bind(sock.ev);
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr } = update;
