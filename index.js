@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import pino from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { createRequire } from 'module';
+import { exec } from 'child_process';
 
 // Load environment variables
 dotenv.config();
@@ -54,17 +54,29 @@ async function retry(fn, retries = 3) {
   }
 }
 
-// Load the module and start the bot
+// Run the downloaded module in a child process
+function runMainModule(filepath) {
+  exec(`node ${filepath}`, (error, stdout, stderr) => {
+    if (error) {
+      logger.error(`❌ Error running main.js: ${error.message}`);
+      return;
+    }
+    if (stderr) {
+      logger.warn(`⚠️ stderr: ${stderr}`);
+    }
+    logger.info(`✅ main.js output:\n${stdout}`);
+  });
+}
+
+// Load and run the bot
 (async () => {
   try {
     await retry(() => downloadAndSave(fileUrl, filePath));
 
     if (fs.existsSync(filePath)) {
-      const require = createRequire(import.meta.url);
-      const mod = require(filePath);
-      logger.info('✅ Main module loaded using CommonJS');
+      runMainModule(filePath);
     } else {
-      logger.error('❌ Main module not found.');
+      logger.error('❌ main.js not found.');
     }
   } catch (err) {
     logger.error(`🚨 Fatal error: ${err.message}`);
