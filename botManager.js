@@ -1,13 +1,15 @@
-import {
-  makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  makeInMemoryStore,
-} from '@whiskeysockets/baileys';
+import baileys from '@whiskeysockets/baileys';
 import qrcode from 'qrcode';
 import NodeCache from 'node-cache';
 import path from 'path';
 import fs from 'fs';
+
+const {
+  makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  makeInMemoryStore,
+} = baileys;
 
 // Session cache
 const sessionCache = new NodeCache();
