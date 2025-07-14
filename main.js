@@ -3,12 +3,12 @@ import { startSession } from './botManager.js';
 console.log("✅ DansDans bot started successfully!");
 
 async function runBot() {
-  console.log("🤖 Starting WhatsApp bot...");
+  console.log("🤖 Starting main WhatsApp session...");
 
   try {
-    await startSession('main'); // This is your main bot session
+    await startSession('main'); // This is YOUR WhatsApp account
   } catch (err) {
-    console.error(`❌ Failed to start bot: ${err.message}`);
+    console.error(`❌ Failed to start main session: ${err.message}`);
   }
 }
 
