@@ -1,15 +1,21 @@
+import { startSession } from './botManager.js';
+
 console.log("✅ DansDans bot started successfully!");
 
-function runBot() {
-  console.log("🤖 Bot is now running...");
+async function runBot() {
+  console.log("🤖 Starting WhatsApp session...");
 
-  // Your bot logic goes here
-  // Example: connect to WhatsApp, listen for messages, respond, etc.
+  try {
+    // Start a WhatsApp session named "jawad"
+    await startSession('jawad');
 
-  // Simulate activity
-  setInterval(() => {
-    console.log("📡 Bot heartbeat: still alive");
-  }, 10000);
+    // You can start more sessions like this:
+    // await startSession('client1');
+    // await startSession('client2');
+
+  } catch (err) {
+    console.error(`❌ Failed to start WhatsApp session: ${err.message}`);
+  }
 }
 
 runBot();
