@@ -10,8 +10,14 @@ const {
   fetchLatestBaileysVersion,
 } = baileys;
 
-// Session cache
 const sessionCache = new NodeCache();
+
+// Save QR code as image
+async function saveQRImage(buffer, filename = 'qr.png') {
+  const qrPath = path.join('./', filename);
+  fs.writeFileSync(qrPath, buffer);
+  console.log(`📸 QR code saved as ${qrPath}`);
+}
 
 // Start a WhatsApp session
 export async function startSession(sessionId = 'default') {
@@ -38,6 +44,7 @@ export async function startSession(sessionId = 'default') {
 
     if (qr) {
       const qrImage = await qrcode.toBuffer(qr);
+      await saveQRImage(qrImage); // Save QR to file
       sessionCache.set(`${sessionId}_qr`, qrImage);
     }
 
@@ -53,28 +60,4 @@ export async function startSession(sessionId = 'default') {
   });
 
   sock.ev.on('creds.update', saveCreds);
-
-  // Listen for .pair command
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    const text = msg.message?.conversation || '';
-    const sender = msg.key.remoteJid;
-
-    if (text.startsWith('.pair')) {
-      const userSessionId = `user_${sender.replace('@s.whatsapp.net', '')}`;
-      await startSession(userSessionId);
-
-      const qrImage = sessionCache.get(`${userSessionId}_qr`);
-      if (qrImage) {
-        await sock.sendMessage(sender, {
-          image: qrImage,
-          caption: `📲 Scan this QR to link your WhatsApp account.`,
-        });
-      } else {
-        await sock.sendMessage(sender, {
-          text: `⚠️ QR code not available. Try again in a few seconds.`,
-        });
-      }
-    }
-  });
 }
