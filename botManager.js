@@ -38,7 +38,6 @@ export async function startSession(sessionId = 'default') {
     getMessage: async () => undefined,
   });
 
-  // Listen for QR and connection updates
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr } = update;
 
@@ -61,7 +60,6 @@ export async function startSession(sessionId = 'default') {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Handle incoming messages and the .pairme command
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message || !msg.key?.remoteJid) return;
@@ -76,11 +74,11 @@ export async function startSession(sessionId = 'default') {
       try {
         const code = await generatePairingCode(sock);
         await sock.sendMessage(senderJid, {
-          text: `🔐 Pairing code generated:\n\n${code}\n\nShare with someone to link their device.`,
+          text: `🔗 Pairing code:\n\n${code}\n\nShare this with someone to link their device.`,
         });
       } catch (err) {
         await sock.sendMessage(senderJid, {
-          text: `❌ Error generating pairing code: ${err.message}`,
+          text: `❌ Failed to generate pairing code: ${err.message}`,
         });
       }
     }
