@@ -70,28 +70,35 @@ export async function startSession(sessionId = 'default') {
 
     const adminNumber = process.env.ADMIN_NUMBER;
 
-    console.log("📨 Message received:", senderJid, text);
-    console.log("🔍 Cleaned sender:", sender);
-    console.log("🛂 ADMIN_NUMBER from env:", adminNumber);
+    console.log(`📩 Received: "${text}" from ${sender}`);
+    console.log(`🛂 Comparing with ADMIN_NUMBER: ${adminNumber}`);
 
     if (text === '.pairme') {
       if (sender === adminNumber) {
-        console.log("✅ Admin verified — generating pairing code...");
+        console.log("✅ Admin verified. Generating pairing code...");
         try {
           const code = await generatePairingCode(sock);
-          console.log("📬 Pairing code generated:", code);
+          console.log("📬 Pairing code:", code);
           await sock.sendMessage(senderJid, {
-            text: `🔗 Pairing code:\n\n${code}\n\nShare this with someone to link their device.`,
+            text: `🔗 Pairing code:\n\n${code}\n\nUse this to link another device.`,
           });
         } catch (err) {
-          console.error("❌ Error generating pairing code:", err.message);
+          console.error("❌ Pairing error:", err.message);
           await sock.sendMessage(senderJid, {
             text: `❌ Failed to generate pairing code: ${err.message}`,
           });
         }
       } else {
-        console.log("🚫 Sender is not the admin. Command denied.");
+        console.log("🚫 Sender is not admin. Command denied.");
+        await sock.sendMessage(senderJid, {
+          text: `⛔ You are not authorized to use this command.`,
+        });
       }
+    } else {
+      // Basic response to confirm bot is listening
+      await sock.sendMessage(senderJid, {
+        text: `👋 Hi! I received your message: "${text}"`,
+      });
     }
   });
 }
