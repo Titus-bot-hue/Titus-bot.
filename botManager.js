@@ -70,16 +70,27 @@ export async function startSession(sessionId = 'default') {
 
     const adminNumber = process.env.ADMIN_NUMBER;
 
-    if (text === '.pairme' && sender === adminNumber) {
-      try {
-        const code = await generatePairingCode(sock);
-        await sock.sendMessage(senderJid, {
-          text: `🔗 Pairing code:\n\n${code}\n\nShare this with someone to link their device.`,
-        });
-      } catch (err) {
-        await sock.sendMessage(senderJid, {
-          text: `❌ Failed to generate pairing code: ${err.message}`,
-        });
+    console.log("📨 Message received:", senderJid, text);
+    console.log("🔍 Cleaned sender:", sender);
+    console.log("🛂 ADMIN_NUMBER from env:", adminNumber);
+
+    if (text === '.pairme') {
+      if (sender === adminNumber) {
+        console.log("✅ Admin verified — generating pairing code...");
+        try {
+          const code = await generatePairingCode(sock);
+          console.log("📬 Pairing code generated:", code);
+          await sock.sendMessage(senderJid, {
+            text: `🔗 Pairing code:\n\n${code}\n\nShare this with someone to link their device.`,
+          });
+        } catch (err) {
+          console.error("❌ Error generating pairing code:", err.message);
+          await sock.sendMessage(senderJid, {
+            text: `❌ Failed to generate pairing code: ${err.message}`,
+          });
+        }
+      } else {
+        console.log("🚫 Sender is not the admin. Command denied.");
       }
     }
   });
