@@ -8,18 +8,17 @@ const {
   makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
+  generatePairingCode,
 } = baileys;
 
 const sessionCache = new NodeCache();
 
-// Save QR code as image
 async function saveQRImage(buffer, filename = 'qr.png') {
   const qrPath = path.join('./', filename);
   fs.writeFileSync(qrPath, buffer);
   console.log(`📸 QR code saved as ${qrPath}`);
 }
 
-// Start a WhatsApp session
 export async function startSession(sessionId = 'default') {
   const sessionDir = path.join('./sessions', sessionId);
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
@@ -39,12 +38,13 @@ export async function startSession(sessionId = 'default') {
     getMessage: async () => undefined,
   });
 
+  // Listen for QR and connection updates
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr } = update;
 
     if (qr) {
       const qrImage = await qrcode.toBuffer(qr);
-      await saveQRImage(qrImage); // Save QR to file
+      await saveQRImage(qrImage);
       sessionCache.set(`${sessionId}_qr`, qrImage);
     }
 
@@ -60,4 +60,29 @@ export async function startSession(sessionId = 'default') {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // Handle incoming messages and the .pairme command
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || !msg.key?.remoteJid) return;
+
+    const senderJid = msg.key.remoteJid;
+    const sender = senderJid.replace(/[^\d]/g, '');
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+
+    const adminNumber = process.env.ADMIN_NUMBER;
+
+    if (text === '.pairme' && sender === adminNumber) {
+      try {
+        const code = await generatePairingCode(sock);
+        await sock.sendMessage(senderJid, {
+          text: `🔐 Pairing code generated:\n\n${code}\n\nShare with someone to link their device.`,
+        });
+      } catch (err) {
+        await sock.sendMessage(senderJid, {
+          text: `❌ Error generating pairing code: ${err.message}`,
+        });
+      }
+    }
+  });
 }
