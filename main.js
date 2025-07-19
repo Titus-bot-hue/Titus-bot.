@@ -1,15 +1,22 @@
-import { startSession } from '../botManager.js';
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { startSession } from './botManager.js';
 
-console.log("✅ DansDans bot started successfully!");
+const app = express();
+const port = 3000;
 
-async function runBot() {
-  console.log("🤖 Starting main WhatsApp session...");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  try {
-    await startSession('main'); // This connects YOUR WhatsApp account
-  } catch (err) {
-    console.error(`❌ Failed to start main session: ${err.message}`);
-  }
-}
+// Serve QR image from Replit
+app.use('/qr.png', express.static(path.join(__dirname, 'qr.png')));
 
-runBot();
+app.get('/', (req, res) => {
+  res.send(`<h1>DansBot QR</h1><img src="/qr.png" style="width:300px;">`);
+});
+
+app.listen(port, () => {
+  console.log(`🌐 QR server running at http://localhost:${port}`);
+  startSession('main'); // Initialize the bot session
+});
