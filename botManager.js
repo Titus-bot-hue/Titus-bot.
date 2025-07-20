@@ -32,15 +32,9 @@ export async function startSession(sessionId = 'default') {
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: true,
-    connectTimeoutMs: 60_000,
-    defaultQueryTimeoutMs: 60_000,
-    msgRetryCount: 3,
-    getMessage: async () => undefined,
   });
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, qr } = update;
-
+  sock.ev.on('connection.update', async ({ connection, qr }) => {
     if (qr) {
       const qrImage = await qrcode.toBuffer(qr);
       await saveQRImage(qrImage);
@@ -67,38 +61,36 @@ export async function startSession(sessionId = 'default') {
     const senderJid = msg.key.remoteJid;
     const sender = senderJid.replace(/[^\d]/g, '');
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-
     const adminNumber = process.env.ADMIN_NUMBER;
 
-    console.log(`📩 Received: "${text}" from ${sender}`);
+    console.log(`📨 Message from ${sender}: "${text}"`);
     console.log(`🛂 Comparing with ADMIN_NUMBER: ${adminNumber}`);
 
     if (text === '.pairme') {
       if (sender === adminNumber) {
-        console.log("✅ Admin verified. Generating pairing code...");
+        console.log("✅ Admin confirmed. Generating pairing code...");
         try {
           const code = await generatePairingCode(sock);
           console.log("📬 Pairing code:", code);
           await sock.sendMessage(senderJid, {
-            text: `🔗 Pairing code:\n\n${code}\n\nUse this to link another device.`,
+            text: `🔗 Pairing code:\n\n${code}\n\nUse this to link a device.`,
           });
         } catch (err) {
-          console.error("❌ Pairing error:", err.message);
+          console.error("❌ Error generating pairing code:", err.message);
           await sock.sendMessage(senderJid, {
             text: `❌ Failed to generate pairing code: ${err.message}`,
           });
         }
       } else {
-        console.log("🚫 Sender is not admin. Command denied.");
+        console.log("🚫 Sender not authorized.");
         await sock.sendMessage(senderJid, {
           text: `⛔ You are not authorized to use this command.`,
         });
       }
     } else {
-      // Basic response to confirm bot is listening
       await sock.sendMessage(senderJid, {
-        text: `👋 Hi! I received your message: "${text}"`,
+        text: `👋 Echo: "${text}"`,
       });
     }
   });
-}
+  }
