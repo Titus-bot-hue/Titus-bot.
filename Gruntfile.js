@@ -1,4 +1,4 @@
-export default function(grunt) {
+module.exports = function(grunt) {
   grunt.initConfig({
     pkg: grunt.file.readJSON('package.json')
   });
@@ -7,4 +7,4 @@ export default function(grunt) {
   grunt.registerTask('default', function() {
     grunt.log.writeln('✅ Grunt default task ran successfully.');
   });
-}
+};
