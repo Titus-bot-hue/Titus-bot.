@@ -8,7 +8,7 @@
     "start": "node index.js"
   },
   "keywords": ["DansDans", "whatsapp-bot", "whatsapp md bot"],
-  "author": "JawadTechX",
+  "author": "DansDans",
   "license": "ISC",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
