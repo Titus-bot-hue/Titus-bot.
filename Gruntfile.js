@@ -3,7 +3,8 @@ export default function(grunt) {
     pkg: grunt.file.readJSON('package.json')
   });
 
-  grunt.registerTask('default', [], function() {
-    grunt.log.writeln('✅ Grunt task ran successfully.');
+  // ✅ Define a default task that just logs success
+  grunt.registerTask('default', function() {
+    grunt.log.writeln('✅ Grunt default task ran successfully.');
   });
 }
