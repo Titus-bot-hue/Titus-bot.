@@ -1,96 +1,40 @@
-import baileys from '@whiskeysockets/baileys';
-import qrcode from 'qrcode';
-import NodeCache from 'node-cache';
-import path from 'path';
-import fs from 'fs';
+import makeWASocket from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import { writeFileSync } from 'fs';
+import { useSingleFileAuthState } from '@whiskeysockets/baileys';
 
-const {
-  makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  generatePairingCode,
-} = baileys;
+export async function startSession(sessionId) {
+  const { state, saveState } = useSingleFileAuthState(`./auth_info_${sessionId}.json`);
 
-const sessionCache = new NodeCache();
-
-async function saveQRImage(buffer, filename = 'qr.png') {
-  const qrPath = path.join('./', filename);
-  fs.writeFileSync(qrPath, buffer);
-  console.log(`📸 QR code saved as ${qrPath}`);
-}
-
-export async function startSession(sessionId = 'default') {
-  const sessionDir = path.join('./sessions', sessionId);
-  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
-
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    syncFullHistory: false,
-    markOnlineOnConnect: true,
+  const socket = makeWASocket({
+    printQRInTerminal: true,
+    auth: state
   });
 
-  sock.ev.on('connection.update', async ({ connection, qr }) => {
+  socket.ev.on('connection.update', (update) => {
+    const { connection, qr } = update;
     if (qr) {
-      const qrImage = await qrcode.toBuffer(qr);
-      await saveQRImage(qrImage);
-      sessionCache.set(`${sessionId}_qr`, qrImage);
+      writeFileSync('./qr.png', qr);
+      console.log('📸 QR code saved as qr.png');
     }
-
     if (connection === 'open') {
       console.log(`✅ WhatsApp session "${sessionId}" connected`);
-      sessionCache.set(sessionId, sock);
-    }
-
-    if (connection === 'close') {
-      console.log(`❌ WhatsApp session "${sessionId}" disconnected`);
-      sessionCache.del(sessionId);
     }
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  socket.ev.on('messages.upsert', async (msg) => {
+    const message = msg.messages[0];
+    if (!message?.message?.conversation) return;
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || !msg.key?.remoteJid) return;
+    const sender = message.key.remoteJid;
+    const text = message.message.conversation;
 
-    const senderJid = msg.key.remoteJid;
-    const sender = senderJid.replace(/[^\d]/g, '');
-    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-    const adminNumber = process.env.ADMIN_NUMBER;
+    console.log(`📨 Message from ${sender}: ${text}`);
 
-    console.log(`📨 Message from ${sender}: "${text}"`);
-    console.log(`🛂 Comparing with ADMIN_NUMBER: ${adminNumber}`);
-
-    if (text === '.pairme') {
-      if (sender === adminNumber) {
-        console.log("✅ Admin confirmed. Generating pairing code...");
-        try {
-          const code = await generatePairingCode(sock);
-          console.log("📬 Pairing code:", code);
-          await sock.sendMessage(senderJid, {
-            text: `🔗 Pairing code:\n\n${code}\n\nUse this to link a device.`,
-          });
-        } catch (err) {
-          console.error("❌ Error generating pairing code:", err.message);
-          await sock.sendMessage(senderJid, {
-            text: `❌ Failed to generate pairing code: ${err.message}`,
-          });
-        }
-      } else {
-        console.log("🚫 Sender not authorized.");
-        await sock.sendMessage(senderJid, {
-          text: `⛔ You are not authorized to use this command.`,
-        });
-      }
-    } else {
-      await sock.sendMessage(senderJid, {
-        text: `👋 Echo: "${text}"`,
-      });
+    if (text === '.pairme' && sender.includes(process.env.ADMIN_NUMBER)) {
+      const pairingCode = Math.floor(100000 + Math.random() * 900000);
+      await socket.sendMessage(sender, { text: `🔐 Pairing Code: ${pairingCode}` });
+      console.log('📬 Pairing code sent to admin.');
     }
   });
-  }
+}
