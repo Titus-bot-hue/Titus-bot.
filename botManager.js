@@ -1,10 +1,16 @@
-import makeWASocket, { useSingleFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import baileys from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { writeFileSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
 
-// Ensure auth folder exists
+// Extract required functions from baileys (CommonJS compatible)
+const {
+  makeWASocket,
+  useSingleFileAuthState,
+  fetchLatestBaileysVersion
+} = baileys;
+
+// Prepare folder for auth sessions
 const authFolder = './auth';
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 
@@ -21,10 +27,10 @@ export async function startSession(sessionId) {
     browser: ['DansBot', 'Chrome', '122']
   });
 
-  // Save authentication updates
+  // Save new auth states on any credential update
   socket.ev.on('creds.update', saveState);
 
-  // Connection events
+  // Handle connection updates
   socket.ev.on('connection.update', (update) => {
     const { connection, qr } = update;
 
@@ -39,23 +45,23 @@ export async function startSession(sessionId) {
 
     if (connection === 'close') {
       const code = update?.lastDisconnect?.error?.output?.statusCode;
-      console.log(`❌ Disconnected. Code: ${code}`);
+      console.log(`❌ Disconnected from WhatsApp. Status Code: ${code}`);
     }
   });
 
-  // Message handler
+  // Listen for new messages
   socket.ev.on('messages.upsert', async (msg) => {
     const message = msg.messages?.[0];
     if (!message?.message?.conversation) return;
 
     const sender = message.key.remoteJid;
-    const text = message.message.conversation;
+    const text = message.message.conversation?.trim();
 
     console.log(`📨 Message from ${sender}: ${text}`);
 
     const admin = process.env.ADMIN_NUMBER || '';
 
-    if (text.trim() === '.pairme' && sender.includes(admin)) {
+    if (text === '.pairme' && sender.includes(admin)) {
       const pairingCode = Math.floor(100000 + Math.random() * 900000);
       await socket.sendMessage(sender, { text: `🔐 Pairing Code: ${pairingCode}` });
       console.log('📬 Pairing code sent to admin.');
