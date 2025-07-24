@@ -1,14 +1,11 @@
-import baileys from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
-
-// Extract required functions from baileys (CommonJS compatible)
-const {
+import {
   makeWASocket,
   useSingleFileAuthState,
   fetchLatestBaileysVersion
-} = baileys;
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 // Prepare folder for auth sessions
 const authFolder = './auth';
@@ -32,7 +29,7 @@ export async function startSession(sessionId) {
 
   // Handle connection updates
   socket.ev.on('connection.update', (update) => {
-    const { connection, qr } = update;
+    const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
       writeFileSync('./qr.png', qr);
@@ -44,7 +41,9 @@ export async function startSession(sessionId) {
     }
 
     if (connection === 'close') {
-      const code = update?.lastDisconnect?.error?.output?.statusCode;
+      const code = lastDisconnect?.error instanceof Boom
+        ? lastDisconnect.error.output.statusCode
+        : 'unknown';
       console.log(`❌ Disconnected from WhatsApp. Status Code: ${code}`);
     }
   });
