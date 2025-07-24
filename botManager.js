@@ -1,21 +1,18 @@
-import baileys from '@whiskeysockets/baileys';
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-
-// Extract required functions from baileys CommonJS default export
-const {
-  makeWASocket,
-  useSingleFileAuthState,
-  fetchLatestBaileysVersion
-} = baileys;
 
 // Prepare folder for auth sessions
 const authFolder = './auth';
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 
 export async function startSession(sessionId) {
-  const { state, saveState } = useSingleFileAuthState(join(authFolder, `${sessionId}.json`));
+  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
 
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`📦 Using Baileys v${version.join('.')}, latest: ${isLatest}`);
@@ -28,7 +25,7 @@ export async function startSession(sessionId) {
   });
 
   // Save new auth states on any credential update
-  socket.ev.on('creds.update', saveState);
+  socket.ev.on('creds.update', saveCreds);
 
   // Handle connection updates
   socket.ev.on('connection.update', (update) => {
