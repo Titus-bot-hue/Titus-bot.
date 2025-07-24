@@ -2,9 +2,10 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { startSession } from '../botManager.js';
+import net from 'net';
 
 const app = express();
-const PORT = process.env.PORT || 10001; // Changed fallback port to avoid 3000 conflicts
+const DEFAULT_PORT = process.env.PORT || 10000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,15 +22,43 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Start server and WhatsApp session
-app.listen(PORT, () => {
-  console.log(`🌐 Server is running on port ${PORT}`);
-  startSession('main');
-}).on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${PORT} is already in use. Try a different one.`);
+// Check if port is free, or find a new one
+function findAvailablePort(startPort, maxAttempts = 10) {
+  return new Promise((resolve, reject) => {
+    let port = startPort;
+    let attempts = 0;
+
+    const tryPort = () => {
+      const tester = net.createServer()
+        .once('error', () => {
+          attempts++;
+          port++;
+          if (attempts >= maxAttempts) {
+            reject(new Error('❌ No available ports found.'));
+          } else {
+            tryPort();
+          }
+        })
+        .once('listening', () => {
+          tester.close();
+          resolve(port);
+        })
+        .listen(port);
+    };
+
+    tryPort();
+  });
+}
+
+// Start server with available port
+findAvailablePort(Number(DEFAULT_PORT))
+  .then(port => {
+    app.listen(port, () => {
+      console.log(`🌐 Server is running on port ${port}`);
+      startSession('main');
+    });
+  })
+  .catch(err => {
+    console.error(err.message);
     process.exit(1);
-  } else {
-    console.error(`❌ Server error:`, err);
-  }
-});
+  });
