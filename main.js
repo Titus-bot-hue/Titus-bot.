@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { startSession } from '../botManager.js';
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10001; // Changed fallback port to avoid 3000 conflicts
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +22,14 @@ app.get('/', (req, res) => {
 });
 
 // Start server and WhatsApp session
-app.listen(port, () => {
-  console.log(`🌐 Server is running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`🌐 Server is running on port ${PORT}`);
   startSession('main');
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Try a different one.`);
+    process.exit(1);
+  } else {
+    console.error(`❌ Server error:`, err);
+  }
 });
