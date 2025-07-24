@@ -1,11 +1,14 @@
-import {
-  makeWASocket,
-  useSingleFileAuthState,
-  fetchLatestBaileysVersion
-} from '@whiskeysockets/baileys';
+import baileys from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
+// Extract required functions from baileys CommonJS default export
+const {
+  makeWASocket,
+  useSingleFileAuthState,
+  fetchLatestBaileysVersion
+} = baileys;
 
 // Prepare folder for auth sessions
 const authFolder = './auth';
