@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { startSession } from '../botManager.js';
 import net from 'net';
+import { existsSync, mkdirSync } from 'fs';
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 10000;
@@ -10,8 +11,12 @@ const DEFAULT_PORT = process.env.PORT || 10000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve QR code from root
-app.use('/qr.png', express.static(path.join(__dirname, '../qr.png')));
+// Ensure public folder exists for serving QR code
+const publicFolder = path.join(process.cwd(), 'public');
+if (!existsSync(publicFolder)) mkdirSync(publicFolder);
+
+// Serve static files from public folder
+app.use(express.static(publicFolder));
 
 // Home route to display QR code
 app.get('/', (req, res) => {
@@ -55,7 +60,7 @@ findAvailablePort(Number(DEFAULT_PORT))
   .then(port => {
     app.listen(port, () => {
       console.log(`🌐 Server is running on port ${port}`);
-      startSession('main');
+      startSession('main'); // This will now save QR to /public/qr.png
     });
   })
   .catch(err => {
