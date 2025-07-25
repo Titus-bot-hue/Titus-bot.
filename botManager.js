@@ -11,6 +11,10 @@ import { join } from 'path';
 const authFolder = './auth';
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 
+// Prepare folder for public assets (QR code)
+const publicFolder = join(process.cwd(), 'public');
+if (!existsSync(publicFolder)) mkdirSync(publicFolder);
+
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
 
@@ -32,8 +36,9 @@ export async function startSession(sessionId) {
     const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
-      writeFileSync('./qr.png', qr);
-      console.log('📸 QR code saved as qr.png');
+      const qrPath = join(publicFolder, 'qr.png');
+      writeFileSync(qrPath, qr);
+      console.log(`📸 QR code saved at ${qrPath}`);
     }
 
     if (connection === 'open') {
