@@ -1,9 +1,9 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { startSession } from '../botManager.js';
+import QRCode from 'qrcode';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import net from 'net';
-import { existsSync, mkdirSync } from 'fs';
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 10000;
@@ -11,23 +11,40 @@ const DEFAULT_PORT = process.env.PORT || 10000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure public folder exists for serving QR code
+// Create "public" folder if it doesn't exist
 const publicFolder = path.join(process.cwd(), 'public');
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Serve static files from public folder
+// Generate the QR code and save as qr.png
+const generateQRCode = async () => {
+  const qrText = 'https://wa.me/254700000000'; // Change this to your WhatsApp bot link
+  try {
+    const qrDataUrl = await QRCode.toDataURL(qrText);
+    const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, '');
+    writeFileSync(path.join(publicFolder, 'qr.png'), base64Data, 'base64');
+    console.log('✅ QR Code saved to public/qr.png');
+  } catch (err) {
+    console.error('❌ Failed to generate QR code:', err);
+  }
+};
+
+// Serve the public folder
 app.use(express.static(publicFolder));
 
-// Home route to display QR code
+// Route to display QR
 app.get('/', (req, res) => {
   res.send(`
-    <h1>🟢 DansBot QR Code</h1>
-    <p>Scan this with WhatsApp Business to activate your bot</p>
-    <img src="/qr.png" style="width:300px; border:1px solid #ccc;">
+    <html>
+      <body style="text-align:center;padding:40px;">
+        <h1>🟢 DansBot QR Code</h1>
+        <p>Scan this QR Code to activate your WhatsApp bot</p>
+        <img src="/qr.png" width="300" style="border:1px solid #ccc;">
+      </body>
+    </html>
   `);
 });
 
-// Check if port is free, or find a new one
+// Find an available port
 function findAvailablePort(startPort, maxAttempts = 10) {
   return new Promise((resolve, reject) => {
     let port = startPort;
@@ -55,12 +72,12 @@ function findAvailablePort(startPort, maxAttempts = 10) {
   });
 }
 
-// Start server with available port
+// Start server and generate QR
 findAvailablePort(Number(DEFAULT_PORT))
-  .then(port => {
+  .then(async port => {
+    await generateQRCode(); // Generate QR before server starts
     app.listen(port, () => {
-      console.log(`🌐 Server is running on port ${port}`);
-      startSession('main'); // This will now save QR to /public/qr.png
+      console.log(`🌐 Server running at http://localhost:${port}`);
     });
   })
   .catch(err => {
