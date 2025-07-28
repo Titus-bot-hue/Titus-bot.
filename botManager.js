@@ -4,23 +4,23 @@ import {
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { existsSync, mkdirSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import QRCode from 'qrcode';
+import QRCode from 'qrcode'; // ✅ Needed to convert QR text to image
 
-// Prepare folders
+// Prepare folder for auth sessions
 const authFolder = './auth';
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 
+// Prepare folder for public assets (QR code)
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Start WhatsApp session
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
-  const { version, isLatest } = await fetchLatestBaileysVersion();
 
-  console.log(`📦 Baileys v${version.join('.')}, latest: ${isLatest}`);
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`📦 Using Baileys v${version.join('.')}, latest: ${isLatest}`);
 
   const socket = makeWASocket({
     version,
@@ -29,17 +29,22 @@ export async function startSession(sessionId) {
     browser: ['DansBot', 'Chrome', '122']
   });
 
+  // Save new auth states on any credential update
   socket.ev.on('creds.update', saveCreds);
 
-  // Handle QR code and connection status
+  // Handle connection updates
   socket.ev.on('connection.update', (update) => {
     const { connection, qr, lastDisconnect } = update;
 
+    // ✅ Convert QR string into PNG image using qrcode package
     if (qr) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
-        if (err) return console.error('❌ Failed to save QR code:', err);
-        console.log(`✅ WhatsApp QR code saved at ${qrPath}`);
+        if (err) {
+          console.error('❌ Failed to save QR code:', err);
+        } else {
+          console.log(`📸 QR code saved at ${qrPath}`);
+        }
       });
     }
 
@@ -51,20 +56,21 @@ export async function startSession(sessionId) {
       const code = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Disconnected. Code: ${code}`);
+      console.log(`❌ Disconnected from WhatsApp. Status Code: ${code}`);
     }
   });
 
-  // Handle incoming messages
+  // Handle messages (e.g., `.pairme`)
   socket.ev.on('messages.upsert', async (msg) => {
     const message = msg.messages?.[0];
     if (!message?.message?.conversation) return;
 
     const sender = message.key.remoteJid;
     const text = message.message.conversation?.trim();
-    const admin = process.env.ADMIN_NUMBER || '';
 
     console.log(`📨 Message from ${sender}: ${text}`);
+
+    const admin = process.env.ADMIN_NUMBER || '';
 
     if (text === '.pairme' && sender.includes(admin)) {
       const pairingCode = Math.floor(100000 + Math.random() * 900000);
