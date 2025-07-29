@@ -1,81 +1,93 @@
 import {
   makeWASocket,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  DisconnectReason
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import QRCode from 'qrcode'; // ✅ Needed to convert QR text to image
+import QRCode from 'qrcode';
+import dotenv from 'dotenv';
 
-// Prepare folder for auth sessions
+dotenv.config();
+
+// Setup folders
 const authFolder = './auth';
-if (!existsSync(authFolder)) mkdirSync(authFolder);
-
-// Prepare folder for public assets (QR code)
 const publicFolder = join(process.cwd(), 'public');
+if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
+// Start WhatsApp session
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
-
   const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`📦 Using Baileys v${version.join('.')}, latest: ${isLatest}`);
 
-  const socket = makeWASocket({
+  console.log(`📦 Baileys v${version.join('.')}, latest: ${isLatest}`);
+
+  const sock = makeWASocket({
     version,
-    printQRInTerminal: true,
     auth: state,
+    printQRInTerminal: true,
     browser: ['DansBot', 'Chrome', '122']
   });
 
-  // Save new auth states on any credential update
-  socket.ev.on('creds.update', saveCreds);
+  // Save new auth state on updates
+  sock.ev.on('creds.update', saveCreds);
 
-  // Handle connection updates
-  socket.ev.on('connection.update', (update) => {
+  // QR and connection status
+  sock.ev.on('connection.update', (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    // ✅ Convert QR string into PNG image using qrcode package
     if (qr) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
         if (err) {
           console.error('❌ Failed to save QR code:', err);
         } else {
-          console.log(`📸 QR code saved at ${qrPath}`);
+          console.log(`✅ WhatsApp QR code saved to ${qrPath}`);
         }
       });
     }
 
     if (connection === 'open') {
-      console.log(`✅ WhatsApp session "${sessionId}" connected`);
+      console.log(`✅ WhatsApp session "${sessionId}" connected successfully`);
     }
 
     if (connection === 'close') {
-      const code = lastDisconnect?.error instanceof Boom
+      const statusCode = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Disconnected from WhatsApp. Status Code: ${code}`);
+      console.log(`❌ Disconnected from WhatsApp. Code: ${statusCode}`);
+
+      if (statusCode !== DisconnectReason.loggedOut) {
+        console.log('🔁 Reconnecting...');
+        startSession(sessionId); // Try reconnecting
+      }
     }
   });
 
-  // Handle messages (e.g., `.pairme`)
-  socket.ev.on('messages.upsert', async (msg) => {
-    const message = msg.messages?.[0];
-    if (!message?.message?.conversation) return;
+  // Listen for .pairme command
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages?.[0];
+    if (!msg || !msg.message || msg.key.fromMe) return;
 
-    const sender = message.key.remoteJid;
-    const text = message.message.conversation?.trim();
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      '';
+
+    const sender = msg.key.remoteJid;
+    const adminNumber = process.env.ADMIN_NUMBER;
 
     console.log(`📨 Message from ${sender}: ${text}`);
 
-    const admin = process.env.ADMIN_NUMBER || '';
-
-    if (text === '.pairme' && sender.includes(admin)) {
+    if (text.trim() === '.pairme' && sender.includes(adminNumber)) {
       const pairingCode = Math.floor(100000 + Math.random() * 900000);
-      await socket.sendMessage(sender, { text: `🔐 Pairing Code: ${pairingCode}` });
-      console.log('📬 Pairing code sent to admin.');
+      await sock.sendMessage(sender, {
+        text: `🔐 Pairing Code: ${pairingCode}`
+      });
+      console.log(`📬 Sent pairing code to admin: ${adminNumber}`);
     }
   });
 }
