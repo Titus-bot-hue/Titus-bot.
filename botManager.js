@@ -12,7 +12,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Setup folders
+// Folders for auth and public QR
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
@@ -32,10 +32,10 @@ export async function startSession(sessionId) {
     browser: ['DansBot', 'Chrome', '122']
   });
 
-  // Save new auth state on updates
+  // Save updated credentials
   sock.ev.on('creds.update', saveCreds);
 
-  // QR and connection status
+  // Connection and QR logic
   sock.ev.on('connection.update', (update) => {
     const { connection, qr, lastDisconnect } = update;
 
@@ -61,13 +61,13 @@ export async function startSession(sessionId) {
       console.log(`❌ Disconnected from WhatsApp. Code: ${statusCode}`);
 
       if (statusCode !== DisconnectReason.loggedOut) {
-        console.log('🔁 Reconnecting...');
-        startSession(sessionId); // Try reconnecting
+        console.log('🔁 Attempting reconnect...');
+        startSession(sessionId); // Auto-reconnect
       }
     }
   });
 
-  // Listen for .pairme command
+  // Listen for .pairme from admin
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages?.[0];
     if (!msg || !msg.message || msg.key.fromMe) return;
@@ -82,7 +82,7 @@ export async function startSession(sessionId) {
 
     console.log(`📨 Message from ${sender}: ${text}`);
 
-    if (text.trim() === '.pairme' && sender.includes(adminNumber)) {
+    if (text.trim().toLowerCase() === '.pairme' && sender.includes(adminNumber)) {
       const pairingCode = Math.floor(100000 + Math.random() * 900000);
       await sock.sendMessage(sender, {
         text: `🔐 Pairing Code: ${pairingCode}`
