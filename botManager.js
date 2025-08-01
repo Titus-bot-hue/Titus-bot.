@@ -77,6 +77,38 @@ async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
   const messageId = msg.key.id;
 
+  const text =
+    msg.message?.conversation ||
+    msg.message?.extendedTextMessage?.text ||
+    msg.message?.imageMessage?.caption ||
+    '';
+
+  const command = text.trim().toLowerCase();
+
+  // Command triggers
+  const commands = {
+    '.ping': '🏓 Pong!',
+    '.alive': '✅ DansBot is alive and kicking!',
+    '.status': '📊 All systems operational.\nFeatures active:\n- Autoread\n- Autoreact\n- Fake Typing\n- Antidelete\n- Autoview Status\n- Always Online',
+    '.menu': `📜 DansBot Menu:
+• .ping → Check bot responsiveness
+• .alive → Confirm bot is running
+• .status → System status
+• .menu → Show this menu`
+  };
+
+  if (commands[command]) {
+    await sock.sendMessage(sender, { text: commands[command] }, { quoted: msg });
+    return;
+  }
+
+  if (command.startsWith('.') && !commands[command]) {
+    await sock.sendMessage(sender, {
+      text: `❓ Unknown command: ${command}\nType .menu to see available commands.`
+    }, { quoted: msg });
+    return;
+  }
+
   // Autoread
   try {
     await sock.readMessages([msg.key]);
