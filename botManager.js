@@ -5,7 +5,7 @@ import {
   DisconnectReason
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import QRCode from 'qrcode';
 import dotenv from 'dotenv';
@@ -17,6 +17,25 @@ const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
+
+// Admin and config
+const adminNumber = process.env.ADMIN_NUMBER; // Format: '2547xxxxxxx@s.whatsapp.net'
+const blocklistPath = './blocklist.json';
+const featuresPath = './features.json';
+
+// Load blocklist
+let blocklist = existsSync(blocklistPath)
+  ? JSON.parse(readFileSync(blocklistPath))
+  : [];
+
+// Load feature toggles
+let features = existsSync(featuresPath)
+  ? JSON.parse(readFileSync(featuresPath))
+  : {
+      autoreact: true,
+      autoview: true,
+      faketyping: true
+    };
 
 // Cache for status monitoring
 let statusCache = {};
@@ -35,66 +54,122 @@ export async function startSession(sessionId) {
     browser: ['DansBot', 'Chrome', '122']
   });
 
-  // Save updated credentials
   sock.ev.on('creds.update', saveCreds);
 
-  // Connection and QR logic
   sock.ev.on('connection.update', (update) => {
     const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
-        if (err) {
-          console.error('❌ Failed to save QR code:', err);
-        } else {
-          console.log(`✅ WhatsApp QR code saved to ${qrPath}`);
-        }
+        if (err) console.error('❌ Failed to save QR code:', err);
+        else console.log(`✅ QR code saved to ${qrPath}`);
       });
     }
 
     if (connection === 'open') {
-      console.log(`✅ WhatsApp session "${sessionId}" connected successfully`);
-      setupListeners(sock); // 🔧 Start automation features
+      console.log(`✅ WhatsApp session "${sessionId}" connected`);
+      setupListeners(sock);
     }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Disconnected from WhatsApp. Code: ${statusCode}`);
+      console.log(`❌ Disconnected. Code: ${statusCode}`);
 
       if (statusCode !== DisconnectReason.loggedOut) {
-        console.log('🔁 Attempting reconnect...');
-        startSession(sessionId); // Auto-reconnect
+        console.log('🔁 Reconnecting...');
+        startSession(sessionId);
       }
     }
   });
 }
 
-// 🔧 Feature handler for incoming messages
+// 🔧 Handle incoming messages
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
-  const messageId = msg.key.id;
-
   const text =
     msg.message?.conversation ||
     msg.message?.extendedTextMessage?.text ||
     msg.message?.imageMessage?.caption ||
     '';
-
   const command = text.trim().toLowerCase();
+  const isAdmin = sender === adminNumber;
 
-  // Command triggers
+  if (blocklist.includes(sender)) {
+    console.log(`⛔ Blocked user tried to message: ${sender}`);
+    return;
+  }
+
+  // Admin commands
+  if (command === '.shutdown' && isAdmin) {
+    await sock.sendMessage(sender, { text: '🛑 Shutting down...' }, { quoted: msg });
+    process.exit(0);
+  }
+
+  if (command.startsWith('.broadcast') && isAdmin) {
+    const message = command.replace('.broadcast', '').trim();
+    if (!message) return await sock.sendMessage(sender, { text: '⚠️ Provide a message.' }, { quoted: msg });
+
+    const chats = await sock.groupFetchAllParticipating();
+    for (const id of Object.keys(chats)) {
+      await sock.sendMessage(id, { text: `📢 Broadcast:\n${message}` });
+    }
+    await sock.sendMessage(sender, { text: '✅ Broadcast sent.' }, { quoted: msg });
+  }
+
+  if (command.startsWith('.block') && isAdmin) {
+    const number = command.replace('.block', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    if (!blocklist.includes(jid)) {
+      blocklist.push(jid);
+      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+      await sock.sendMessage(sender, { text: `✅ Blocked ${number}` }, { quoted: msg });
+    } else {
+      await sock.sendMessage(sender, { text: `⚠️ Already blocked.` }, { quoted: msg });
+    }
+  }
+
+  if (command.startsWith('.unblock') && isAdmin) {
+    const number = command.replace('.unblock', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    const index = blocklist.indexOf(jid);
+    if (index !== -1) {
+      blocklist.splice(index, 1);
+      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+      await sock.sendMessage(sender, { text: `✅ Unblocked ${number}` }, { quoted: msg });
+    } else {
+      await sock.sendMessage(sender, { text: `⚠️ Not blocked.` }, { quoted: msg });
+    }
+  }
+
+  if (command.startsWith('.toggle') && isAdmin) {
+    const feature = command.replace('.toggle', '').trim();
+    if (!features.hasOwnProperty(feature)) {
+      await sock.sendMessage(sender, { text: `❌ Unknown feature: ${feature}` }, { quoted: msg });
+    } else {
+      features[feature] = !features[feature];
+      writeFileSync(featuresPath, JSON.stringify(features, null, 2));
+      await sock.sendMessage(sender, { text: `🔁 ${feature} is now ${features[feature] ? 'enabled' : 'disabled'}` }, { quoted: msg });
+    }
+  }
+
+  // Regular commands
   const commands = {
     '.ping': '🏓 Pong!',
-    '.alive': '✅ DansBot is alive and kicking!',
-    '.status': '📊 All systems operational.\nFeatures active:\n- Autoread\n- Autoreact\n- Fake Typing\n- Antidelete\n- Autoview Status\n- Always Online',
-    '.menu': `📜 DansBot Menu:
-• .ping → Check bot responsiveness
-• .alive → Confirm bot is running
-• .status → System status
-• .menu → Show this menu`
+    '.alive': '✅ DansBot is alive!',
+    '.status': `📊 Status:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
+    '.menu': `📜 Menu:
+• .ping
+• .alive
+• .status
+• .menu
+• .shutdown (admin)
+• .broadcast <msg> (admin)
+• .block <number> (admin)
+• .unblock <number> (admin)
+• .toggle <feature> (admin)`
   };
 
   if (commands[command]) {
@@ -112,49 +187,48 @@ async function handleIncomingMessage(sock, msg) {
   // Autoread
   try {
     await sock.readMessages([msg.key]);
-    console.log(`👁️ Autoread message from ${sender}`);
+    console.log(`👁️ Read message from ${sender}`);
   } catch (err) {
-    console.error('❌ Failed to autoread message:', err);
+    console.error('❌ Autoread failed:', err);
   }
 
   // Autoreact
-  try {
-    await sock.sendMessage(sender, {
-      react: {
-        text: '❤️',
-        key: msg.key
-      }
-    });
-    console.log(`💬 Autoreacted to message from ${sender}`);
-  } catch (err) {
-    console.error('❌ Failed to autoreact:', err);
+  if (features.autoreact) {
+    try {
+      await sock.sendMessage(sender, {
+        react: { text: '❤️', key: msg.key }
+      });
+      console.log(`💬 Reacted to ${sender}`);
+    } catch (err) {
+      console.error('❌ Autoreact failed:', err);
+    }
   }
 
   // Fake Typing
-  try {
-    await sock.sendPresenceUpdate('composing', sender);
-    console.log(`⌨️ Fake typing in ${sender}`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    await sock.sendPresenceUpdate('paused', sender);
-  } catch (err) {
-    console.error('❌ Failed to fake typing:', err);
+  if (features.faketyping) {
+    try {
+      await sock.sendPresenceUpdate('composing', sender);
+      await new Promise(res => setTimeout(res, 3000));
+      await sock.sendPresenceUpdate('paused', sender);
+    } catch (err) {
+      console.error('❌ Typing failed:', err);
+    }
   }
 }
 
 // 👀 Autoview status
 async function autoviewStatus(sock) {
+  if (!features.autoview) return;
   try {
     const statusList = await sock.getStatus();
     for (const status of statusList) {
-      const jid = status.id;
-      const stories = status.status;
-      for (const story of stories) {
-        await sock.readStatus(jid, story.timestamp);
-        console.log(`👁️ Viewed status from ${jid}`);
+      for (const story of status.status) {
+        await sock.readStatus(status.id, story.timestamp);
+        console.log(`👁️ Viewed status from ${status.id}`);
       }
     }
   } catch (err) {
-    console.error('❌ Failed to autoview status:', err);
+    console.error('❌ Autoview failed:', err);
   }
 }
 
@@ -165,32 +239,12 @@ async function monitorStatus(sock) {
     for (const status of statusList) {
       const jid = status.id;
       const stories = status.status;
-
       if (!statusCache[jid]) statusCache[jid] = [];
 
       for (const story of stories) {
-        const exists = statusCache[jid].some(s => s.timestamp === story.timestamp);
-        if (!exists) {
+        if (!statusCache[jid].some(s => s.timestamp === story.timestamp)) {
           statusCache[jid].push(story);
-          console.log(`📥 Saved status from ${jid} at ${story.timestamp}`);
         }
-      }
-
-      const deleted = statusCache[jid].filter(cached =>
-        !stories.some(s => s.timestamp === cached.timestamp)
-      );
-
-      for (const removed of deleted) {
-        console.log(`🚨 Status deleted by ${jid}:`, removed);
-        // Optional: re-send or archive
-      }
-
-      statusCache[jid] = stories;
-    }
-  } catch (err) {
-    console.error('❌ Failed to monitor status:', err);
-  }
-}
 
 // 🌐 Always online
 function stayOnline(sock) {
