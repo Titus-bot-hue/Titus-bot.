@@ -18,6 +18,9 @@ const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
+// Cache for status monitoring
+let statusCache = {};
+
 // Start WhatsApp session
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
@@ -52,6 +55,7 @@ export async function startSession(sessionId) {
 
     if (connection === 'open') {
       console.log(`✅ WhatsApp session "${sessionId}" connected successfully`);
+      setupListeners(sock); // 🔧 Start automation features
     }
 
     if (connection === 'close') {
@@ -66,26 +70,139 @@ export async function startSession(sessionId) {
       }
     }
   });
-
-  // Listen for incoming messages
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages?.[0];
-    if (!msg || !msg.message || msg.key.fromMe) return;
-
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      '';
-
-    const sender = msg.key.remoteJid;
-    console.log(`📨 Message from ${sender}: ${text}`);
-
-    // Placeholder for automation features
-    await handleIncomingMessage(sock, msg);
-  });
 }
 
-// 🔧 Feature handler placeholder
+// 🔧 Feature handler for incoming messages
 async function handleIncomingMessage(sock, msg) {
-  // This is where we'll add autoreact, antidelete, etc.
+  const sender = msg.key.remoteJid;
+  const messageId = msg.key.id;
+
+  // Autoread
+  try {
+    await sock.readMessages([msg.key]);
+    console.log(`👁️ Autoread message from ${sender}`);
+  } catch (err) {
+    console.error('❌ Failed to autoread message:', err);
+  }
+
+  // Autoreact
+  try {
+    await sock.sendMessage(sender, {
+      react: {
+        text: '❤️',
+        key: msg.key
+      }
+    });
+    console.log(`💬 Autoreacted to message from ${sender}`);
+  } catch (err) {
+    console.error('❌ Failed to autoreact:', err);
+  }
+
+  // Fake Typing
+  try {
+    await sock.sendPresenceUpdate('composing', sender);
+    console.log(`⌨️ Fake typing in ${sender}`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    await sock.sendPresenceUpdate('paused', sender);
+  } catch (err) {
+    console.error('❌ Failed to fake typing:', err);
+  }
+}
+
+// 👀 Autoview status
+async function autoviewStatus(sock) {
+  try {
+    const statusList = await sock.getStatus();
+    for (const status of statusList) {
+      const jid = status.id;
+      const stories = status.status;
+      for (const story of stories) {
+        await sock.readStatus(jid, story.timestamp);
+        console.log(`👁️ Viewed status from ${jid}`);
+      }
+    }
+  } catch (err) {
+    console.error('❌ Failed to autoview status:', err);
+  }
+}
+
+// 🛡️ Monitor status deletion
+async function monitorStatus(sock) {
+  try {
+    const statusList = await sock.getStatus();
+    for (const status of statusList) {
+      const jid = status.id;
+      const stories = status.status;
+
+      if (!statusCache[jid]) statusCache[jid] = [];
+
+      for (const story of stories) {
+        const exists = statusCache[jid].some(s => s.timestamp === story.timestamp);
+        if (!exists) {
+          statusCache[jid].push(story);
+          console.log(`📥 Saved status from ${jid} at ${story.timestamp}`);
+        }
+      }
+
+      const deleted = statusCache[jid].filter(cached =>
+        !stories.some(s => s.timestamp === cached.timestamp)
+      );
+
+      for (const removed of deleted) {
+        console.log(`🚨 Status deleted by ${jid}:`, removed);
+        // Optional: re-send or archive
+      }
+
+      statusCache[jid] = stories;
+    }
+  } catch (err) {
+    console.error('❌ Failed to monitor status:', err);
+  }
+}
+
+// 🌐 Always online
+function stayOnline(sock) {
+  setInterval(() => {
+    sock.sendPresenceUpdate('available');
+    console.log('🟢 Bot is online');
+  }, 30000);
+}
+
+// 🧠 Setup all listeners and periodic features
+function setupListeners(sock) {
+  // Incoming messages
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    for (const msg of messages) {
+      if (!msg.key.fromMe) {
+        await handleIncomingMessage(sock, msg);
+      }
+    }
+  });
+
+  // Antidelete chats
+  sock.ev.on('messages.update', async updates => {
+    for (const update of updates) {
+      if (update.messageStubType === 8 && update.key) {
+        const chatId = update.key.remoteJid;
+        const messageId = update.key.id;
+
+        try {
+          const originalMsg = await sock.loadMessage(chatId, messageId);
+          if (originalMsg?.message) {
+            await sock.sendMessage(chatId, {
+              text: `🚨 Antidelete:\n${JSON.stringify(originalMsg.message, null, 2)}`
+            });
+            console.log(`🛡️ Restored deleted message in ${chatId}`);
+          }
+        } catch (err) {
+          console.error('❌ Failed to restore deleted message:', err);
+        }
+      }
+    }
+  });
+
+  // Periodic features
+  setInterval(() => autoviewStatus(sock), 60000);
+  setInterval(() => monitorStatus(sock), 60000);
+  stayOnline(sock);
 }
