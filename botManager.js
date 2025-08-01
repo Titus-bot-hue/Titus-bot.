@@ -12,23 +12,19 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Folders for auth and public QR
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Admin and config
-const adminNumber = process.env.ADMIN_NUMBER; // Format: '2547xxxxxxx@s.whatsapp.net'
+const adminNumber = process.env.ADMIN_NUMBER;
 const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
 
-// Load blocklist
 let blocklist = existsSync(blocklistPath)
   ? JSON.parse(readFileSync(blocklistPath))
   : [];
 
-// Load feature toggles
 let features = existsSync(featuresPath)
   ? JSON.parse(readFileSync(featuresPath))
   : {
@@ -37,10 +33,8 @@ let features = existsSync(featuresPath)
       faketyping: true
     };
 
-// Cache for status monitoring
 let statusCache = {};
 
-// Start WhatsApp session
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -86,7 +80,6 @@ export async function startSession(sessionId) {
   });
 }
 
-// 🔧 Handle incoming messages
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
   const text =
@@ -97,12 +90,8 @@ async function handleIncomingMessage(sock, msg) {
   const command = text.trim().toLowerCase();
   const isAdmin = sender === adminNumber;
 
-  if (blocklist.includes(sender)) {
-    console.log(`⛔ Blocked user tried to message: ${sender}`);
-    return;
-  }
+  if (blocklist.includes(sender)) return;
 
-  // Admin commands
   if (command === '.shutdown' && isAdmin) {
     await sock.sendMessage(sender, { text: '🛑 Shutting down...' }, { quoted: msg });
     process.exit(0);
@@ -126,8 +115,6 @@ async function handleIncomingMessage(sock, msg) {
       blocklist.push(jid);
       writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
       await sock.sendMessage(sender, { text: `✅ Blocked ${number}` }, { quoted: msg });
-    } else {
-      await sock.sendMessage(sender, { text: `⚠️ Already blocked.` }, { quoted: msg });
     }
   }
 
@@ -139,8 +126,6 @@ async function handleIncomingMessage(sock, msg) {
       blocklist.splice(index, 1);
       writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
       await sock.sendMessage(sender, { text: `✅ Unblocked ${number}` }, { quoted: msg });
-    } else {
-      await sock.sendMessage(sender, { text: `⚠️ Not blocked.` }, { quoted: msg });
     }
   }
 
@@ -155,7 +140,6 @@ async function handleIncomingMessage(sock, msg) {
     }
   }
 
-  // Regular commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
@@ -184,39 +168,27 @@ async function handleIncomingMessage(sock, msg) {
     return;
   }
 
-  // Autoread
   try {
     await sock.readMessages([msg.key]);
-    console.log(`👁️ Read message from ${sender}`);
-  } catch (err) {
-    console.error('❌ Autoread failed:', err);
-  }
+  } catch {}
 
-  // Autoreact
   if (features.autoreact) {
     try {
       await sock.sendMessage(sender, {
         react: { text: '❤️', key: msg.key }
       });
-      console.log(`💬 Reacted to ${sender}`);
-    } catch (err) {
-      console.error('❌ Autoreact failed:', err);
-    }
+    } catch {}
   }
 
-  // Fake Typing
   if (features.faketyping) {
     try {
       await sock.sendPresenceUpdate('composing', sender);
       await new Promise(res => setTimeout(res, 3000));
       await sock.sendPresenceUpdate('paused', sender);
-    } catch (err) {
-      console.error('❌ Typing failed:', err);
-    }
+    } catch {}
   }
 }
 
-// 👀 Autoview status
 async function autoviewStatus(sock) {
   if (!features.autoview) return;
   try {
@@ -224,15 +196,11 @@ async function autoviewStatus(sock) {
     for (const status of statusList) {
       for (const story of status.status) {
         await sock.readStatus(status.id, story.timestamp);
-        console.log(`👁️ Viewed status from ${status.id}`);
       }
     }
-  } catch (err) {
-    console.error('❌ Autoview failed:', err);
-  }
+  } catch {}
 }
 
-// 🛡️ Monitor status deletion
 async function monitorStatus(sock) {
   try {
     const statusList = await sock.getStatus();
@@ -245,18 +213,12 @@ async function monitorStatus(sock) {
         if (!statusCache[jid].some(s => s.timestamp === story.timestamp)) {
           statusCache[jid].push(story);
         }
-
-// 🌐 Always online
-function stayOnline(sock) {
-  setInterval(() => {
-    sock.sendPresenceUpdate('available');
-    console.log('🟢 Bot is online');
-  }, 30000);
+      }
+    }
+  } catch {}
 }
 
-// 🧠 Setup all listeners and periodic features
 function setupListeners(sock) {
-  // Incoming messages
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.key.fromMe) {
@@ -265,7 +227,6 @@ function setupListeners(sock) {
     }
   });
 
-  // Antidelete chats
   sock.ev.on('messages.update', async updates => {
     for (const update of updates) {
       if (update.messageStubType === 8 && update.key) {
@@ -278,17 +239,12 @@ function setupListeners(sock) {
             await sock.sendMessage(chatId, {
               text: `🚨 Antidelete:\n${JSON.stringify(originalMsg.message, null, 2)}`
             });
-            console.log(`🛡️ Restored deleted message in ${chatId}`);
           }
-        } catch (err) {
-          console.error('❌ Failed to restore deleted message:', err);
-        }
+        } catch {}
       }
     }
   });
 
-  // Periodic features
   setInterval(() => autoviewStatus(sock), 60000);
   setInterval(() => monitorStatus(sock), 60000);
-  stayOnline(sock);
 }
