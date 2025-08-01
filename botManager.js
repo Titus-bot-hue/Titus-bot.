@@ -67,7 +67,7 @@ export async function startSession(sessionId) {
     }
   });
 
-  // Listen for .pairme from admin
+  // Listen for incoming messages
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages?.[0];
     if (!msg || !msg.message || msg.key.fromMe) return;
@@ -78,16 +78,14 @@ export async function startSession(sessionId) {
       '';
 
     const sender = msg.key.remoteJid;
-    const adminNumber = process.env.ADMIN_NUMBER;
-
     console.log(`📨 Message from ${sender}: ${text}`);
 
-    if (text.trim().toLowerCase() === '.pairme' && sender.includes(adminNumber)) {
-      const pairingCode = Math.floor(100000 + Math.random() * 900000);
-      await sock.sendMessage(sender, {
-        text: `🔐 Pairing Code: ${pairingCode}`
-      });
-      console.log(`📬 Sent pairing code to admin: ${adminNumber}`);
-    }
+    // Placeholder for automation features
+    await handleIncomingMessage(sock, msg);
   });
+}
+
+// 🔧 Feature handler placeholder
+async function handleIncomingMessage(sock, msg) {
+  // This is where we'll add autoreact, antidelete, etc.
 }
