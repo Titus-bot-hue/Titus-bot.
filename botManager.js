@@ -12,32 +12,25 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Folders for auth and QR
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Admin and config
-const adminNumber = process.env.ADMIN_NUMBER; // e.g., '2547xxxxxxx@s.whatsapp.net'
+const adminNumber = process.env.ADMIN_NUMBER;
 const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
 
-// Load blocklist
 let blocklist = existsSync(blocklistPath)
   ? JSON.parse(readFileSync(blocklistPath))
   : [];
 
-// Load feature toggles
 let features = existsSync(featuresPath)
   ? JSON.parse(readFileSync(featuresPath))
   : {
-      autoreact: true,
       autoview: true,
       faketyping: true
     };
-
-let statusCache = {};
 
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
@@ -178,17 +171,6 @@ async function handleIncomingMessage(sock, msg) {
     console.error('❌ Autoread failed:', err);
   }
 
-  if (features.autoreact) {
-    try {
-      await sock.sendMessage(sender, {
-        react: { text: '❤️', key: msg.key }
-      });
-      console.log(`💬 Reacted to ${sender}`);
-    } catch (err) {
-      console.error('❌ Autoreact failed:', err);
-    }
-  }
-
   if (features.faketyping) {
     try {
       await sock.sendPresenceUpdate('composing', sender);
@@ -197,40 +179,6 @@ async function handleIncomingMessage(sock, msg) {
     } catch (err) {
       console.error('❌ Typing failed:', err);
     }
-  }
-}
-
-async function autoviewStatus(sock) {
-  if (!features.autoview) return;
-  try {
-    const statusList = await sock.getStatus();
-    for (const status of statusList) {
-      for (const story of status.status) {
-        await sock.readStatus(status.id, story.timestamp);
-        console.log(`👁️ Viewed status from ${status.id}`);
-      }
-    }
-  } catch (err) {
-    console.error('❌ Autoview failed:', err);
-  }
-}
-
-async function monitorStatus(sock) {
-  try {
-    const statusList = await sock.getStatus();
-    for (const status of statusList) {
-      const jid = status.id;
-      const stories = status.status;
-      if (!statusCache[jid]) statusCache[jid] = [];
-
-      for (const story of stories) {
-        if (!statusCache[jid].some(s => s.timestamp === story.timestamp)) {
-          statusCache[jid].push(story);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('❌ Monitor status failed:', err);
   }
 }
 
@@ -271,7 +219,5 @@ function setupListeners(sock) {
     }
   });
 
-  setInterval(() => autoviewStatus(sock), 60000);
-  setInterval(() => monitorStatus(sock), 60000);
-  stayOnline(sock);
+  setInterval(() => stayOnline(sock), 60000);
 }
