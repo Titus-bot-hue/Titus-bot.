@@ -60,7 +60,7 @@ global.mess = {
     error: 'Error!',
 }
 
-global.thumb = fs.readFileSync('./robinmedia/robin.jpg')
+global.thumb = fs.readFileSync('')
 
 let file = require.resolve(__filename)
 fs.watchFile(file, () => {
