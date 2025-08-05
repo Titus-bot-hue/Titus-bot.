@@ -4,7 +4,7 @@ const chalk = require('chalk')
 
 
 global.ig = 'https://wa.me/254757717976'
-global.ytname = 'YT: https://www.youtube.com/@iconic-tech'
+global.ytname = 'YT:https://www.youtube.com/@Dans_Dans3101'
 global.owner = ['254757717976']
 global.ownernomer = '254757717976'
 global.socialm = 'GitHub: https://github.com/iconic05'
