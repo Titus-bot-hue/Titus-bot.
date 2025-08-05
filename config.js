@@ -7,8 +7,8 @@ global.ig = 'https://wa.me/254757717976'
 global.ytname = 'YT:https://www.youtube.com/@Dans_Dans3101'
 global.owner = ['254757717976']
 global.ownernomer = '254757717976'
-global.socialm = 'GitHub: https://github.com/iconic05'
-global.location = 'Zimbabwe' 
+global.socialm = 'GitHub: https://github.com/Dans3101/Dans-dan'
+global.location = 'Kenya' 
 
 //==================SETTING BOT===========================\\
 global.botname = "Dans xm Tech"
