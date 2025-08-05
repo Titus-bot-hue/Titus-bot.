@@ -3,24 +3,24 @@ const chalk = require('chalk')
 
 
 
-global.ig = 'https://wa.me/263714388643'
+global.ig = 'https://wa.me/254757717976'
 global.ytname = 'YT: https://www.youtube.com/@iconic-tech'
-global.owner = ['2347076945585']
-global.ownernomer = '263714388643'
+global.owner = ['254757717976']
+global.ownernomer = '254757717976'
 global.socialm = 'GitHub: https://github.com/iconic05'
 global.location = 'Zimbabwe' 
 
 //==================SETTING BOT===========================\\
-global.botname = "𝐑𝐎𝐁𝐈𝐍 𝐗𝐌𝐃"
-global.ownernumber = '263714388643'
-global.botnumber = '263714388643'
-global.ownername = 'ɪᴄᴏɴɪᴄ ᴛᴇᴄʜ'
-global.ownerNumber = ["263714388643@s.whatsapp.net"]
+global.botname = "Dans xm Tech"
+global.ownernumber = '254757717976'
+global.botnumber = '254757717976'
+global.ownername = 'Dans Dans'
+global.ownerNumber = ["254757717976@s.whatsapp.net"]
 global.themeemoji = '🎲'
-global.wm = "ᴅᴇᴠ ɪᴄᴏɴɪᴄ ᴛᴇᴄʜ"
-global.creator = "263714388643@s.whatsapp.net"
-global.packname = "𝐑𝐎𝐁𝐈𝐍 𝐗𝐌𝐃"
-global.author = "𝐑𝐎𝐁𝐈𝐍 𝐗𝐌𝐃"
+global.wm = "Dans Dans"
+global.creator = "254757717976@s.whatsapp.net"
+global.packname = "Dans Xm Tech"
+global.author = "Dans Dans"
 
 //const them
 global.themeemoji = '🎲'
