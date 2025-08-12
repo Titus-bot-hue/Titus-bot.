@@ -1,8 +1,8 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { startSession, generateLinkingCode } from './botManager.js'; // ✅ Make sure generateLinkingCode is exported
+import { existsSync, mkdirSync } from 'fs';
+import { startSession, generateLinkingCode } from './botManager.js'; // ✅ Updated import
 
 // Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -16,39 +16,36 @@ const publicPath = path.join(process.cwd(), 'public');
 // Ensure public folder exists
 if (!existsSync(publicPath)) mkdirSync(publicPath);
 
-// Serve QR image and other static files
+// Serve static files like qr.png
 app.use(express.static(publicPath));
 
-// Homepage with both login methods
-app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <body style="text-align:center; padding:40px; font-family:sans-serif;">
-        <h1>🟢 DansBot Connection</h1>
-        <p><strong>Option 1:</strong> Scan this QR Code using WhatsApp Linked Devices</p>
-        <img src="/qr.png" width="300" style="border:1px solid #ccc;"><br><br>
-        <p><strong>Option 2:</strong> Link with Code</p>
-        <a href="/link-code" style="display:inline-block; padding:10px 20px; background:#4CAF50; color:white; text-decoration:none; border-radius:5px;">Get Linking Code</a>
-      </body>
-    </html>
-  `);
-});
-
-// Generate linking code
-app.get('/link-code', async (req, res) => {
+// Homepage - shows QR + Link Code
+app.get('/', async (req, res) => {
   try {
-    const code = await generateLinkingCode('main'); // sessionId 'main'
+    const linkCode = await generateLinkingCode('main'); // generate link code
     res.send(`
       <html>
-        <body style="text-align:center; padding:40px; font-family:sans-serif;">
-          <h1>🔗 Your Linking Code</h1>
-          <p>Enter this code in WhatsApp: <strong style="font-size:2em;">${code}</strong></p>
-          <p><a href="/">⬅ Back</a></p>
+        <head>
+          <title>DansBot WhatsApp Connect</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 30px; }
+            img { border: 1px solid #ccc; margin-top: 10px; }
+            .code-box { font-size: 20px; background: #f1f1f1; padding: 10px; display: inline-block; margin-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>🟢 DansBot WhatsApp Connection</h1>
+          <p>Scan this QR Code using WhatsApp Linked Devices:</p>
+          <img src="/qr.png" width="300">
+          
+          <h2>OR</h2>
+          <p>Enter this Linking Code in WhatsApp Linked Devices:</p>
+          <div class="code-box">${linkCode}</div>
         </body>
       </html>
     `);
   } catch (err) {
-    res.status(500).send(`<p>❌ Failed to generate code: ${err.message}</p>`);
+    res.status(500).send("❌ Failed to generate link code. Check server logs.");
   }
 });
 
@@ -57,8 +54,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start everything
+// Start server and WhatsApp session
 app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
-  startSession('main'); // ✅ Connect to WhatsApp & generate QR
+  startSession('main');
 });
