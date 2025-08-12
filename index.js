@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
 import { startSession, generateLinkingCode } from './botManager.js';
 
-// Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -12,47 +11,62 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const publicPath = path.join(process.cwd(), 'public');
 
-// Ensure public folder exists
 if (!existsSync(publicPath)) mkdirSync(publicPath);
 
-// Serve static files like qr.png
 app.use(express.static(publicPath));
 
-// Homepage - QR + Auto-Refreshing Link Code
-app.get('/', async (req, res) => {
+// Homepage with QR and Pair Code
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <body style="text-align:center; padding:40px; font-family:sans-serif;">
+        <h1>🟢 DansBot WhatsApp Connection</h1>
+        <h2>Method 1: Scan QR Code</h2>
+        <p>Open WhatsApp > Linked Devices > Link a Device</p>
+        <img src="/qr.png" width="300" style="border:1px solid #ccc;"><br><br>
+        
+        <h2>Method 2: Use Pairing Code</h2>
+        <button style="padding:10px 20px; font-size:16px;" onclick="getPairCode()">Get Pairing Code</button>
+        <p id="pairCode" style="font-size:20px; color:green; font-weight:bold;"></p>
+        <p id="expiryNote" style="color:red; font-size:14px;"></p>
+        
+        <script>
+          async function getPairCode() {
+            document.getElementById('pairCode').innerText = '⏳ Generating...';
+            document.getElementById('expiryNote').innerText = '';
+            try {
+              const res = await fetch('/paircode');
+              const data = await res.json();
+              if (data.code) {
+                document.getElementById('pairCode').innerText = '🔑 ' + data.code;
+                document.getElementById('expiryNote').innerText = '⚠️ Code expires in 1 minute!';
+                setTimeout(() => {
+                  document.getElementById('pairCode').innerText = '⛔ Code expired';
+                  document.getElementById('expiryNote').innerText = '';
+                }, 60000);
+              } else {
+                document.getElementById('pairCode').innerText = '❌ Failed to get code.';
+              }
+            } catch (err) {
+              document.getElementById('pairCode').innerText = '❌ Error fetching code.';
+            }
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+// API to generate pair code
+app.get('/paircode', async (req, res) => {
   try {
-    // Always generate a fresh code when someone opens the page
-    const linkCode = await generateLinkingCode('main');
-
-    res.send(`
-      <html>
-        <head>
-          <title>DansBot WhatsApp Connect</title>
-          <meta http-equiv="refresh" content="30"> <!-- Auto-refresh page every 30 seconds -->
-          <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 30px; }
-            img { border: 1px solid #ccc; margin-top: 10px; }
-            .code-box { font-size: 20px; background: #f1f1f1; padding: 10px; display: inline-block; margin-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <h1>🟢 DansBot WhatsApp Connection</h1>
-          <p>Scan this QR Code using WhatsApp Linked Devices:</p>
-          <img src="/qr.png" width="300">
-          
-          <h2>OR</h2>
-          <p>Enter this Linking Code in WhatsApp Linked Devices:</p>
-          <div class="code-box">${linkCode}</div>
-
-          <p style="margin-top: 20px; color: gray; font-size: 14px;">
-            Page refreshes every 30 seconds to keep codes valid.
-          </p>
-        </body>
-      </html>
-    `);
+    const code = await generateLinkingCode();
+    setTimeout(() => {
+      console.log(`⛔ Pairing code expired: ${code}`);
+    }, 60000); // expire in 1 minute
+    res.json({ code });
   } catch (err) {
-    console.error('❌ Error generating link code:', err);
-    res.status(500).send("❌ Failed to generate link code. Check server logs.");
+    res.status(500).json({ error: 'Failed to generate code' });
   }
 });
 
@@ -61,7 +75,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start server and WhatsApp session
 app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
   startSession('main');
