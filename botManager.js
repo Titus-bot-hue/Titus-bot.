@@ -12,29 +12,27 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Folders
+// Paths
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Config files
 const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
 
-// Load data
+// Data storage
 let blocklist = existsSync(blocklistPath) ? JSON.parse(readFileSync(blocklistPath)) : [];
 let features = existsSync(featuresPath)
   ? JSON.parse(readFileSync(featuresPath))
   : { autoreact: false, autoview: true, faketyping: true };
 
-let statusCache = {};
-let sockInstance = null; // Keep socket instance for pairing code
+let sockInstance = null;
 
+// Start WhatsApp session
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version, isLatest } = await fetchLatestBaileysVersion();
-
   console.log(`📦 Baileys v${version.join('.')}, latest: ${isLatest}`);
 
   sockInstance = makeWASocket({
@@ -52,7 +50,7 @@ export async function startSession(sessionId) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
         if (err) console.error('❌ Failed to save QR:', err);
-        else console.log(`✅ QR saved to ${qrPath}`);
+        else console.log(`✅ QR code saved at ${qrPath}`);
       });
     }
 
@@ -66,6 +64,7 @@ export async function startSession(sessionId) {
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
       console.log(`❌ Disconnected. Code: ${statusCode}`);
+
       if (statusCode !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconnecting...');
         startSession(sessionId);
@@ -74,9 +73,9 @@ export async function startSession(sessionId) {
   });
 }
 
-// Generate a pairing code for linking without QR
+// Generate pairing code for linking without QR
 export async function generateLinkingCode() {
-  if (!sockInstance) throw new Error("Session not started yet.");
+  if (!sockInstance) throw new Error('Session not started yet.');
   try {
     const code = await sockInstance.requestPairingCode(process.env.ADMIN_NUMBER);
     console.log(`🔑 Pairing code: ${code}`);
@@ -87,6 +86,7 @@ export async function generateLinkingCode() {
   }
 }
 
+// Handle incoming messages
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
   const text =
@@ -101,13 +101,24 @@ async function handleIncomingMessage(sock, msg) {
     return;
   }
 
+  // Command list
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
     '.status': `📊 Features:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
-    '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .shutdown\n• .broadcast <msg>\n• .block <number>\n• .unblock <number>\n• .toggle <feature>\n• .paircode (get pairing code)`
+    '.menu': `📜 Menu:
+• .ping
+• .alive
+• .status
+• .menu
+• .broadcast <msg>
+• .block <number>
+• .unblock <number>
+• .toggle <feature>
+• .paircode (get pairing code)`
   };
 
+  // Pairing code command
   if (command === '.paircode') {
     try {
       const code = await generateLinkingCode();
@@ -118,8 +129,55 @@ async function handleIncomingMessage(sock, msg) {
     return;
   }
 
+  // Simple commands
   if (commands[command]) {
     await sock.sendMessage(sender, { text: commands[command] });
+    return;
+  }
+
+  // Broadcast
+  if (command.startsWith('.broadcast ')) {
+    const message = command.replace('.broadcast', '').trim();
+    const chats = await sock.groupFetchAllParticipating();
+    for (const id of Object.keys(chats)) {
+      await sock.sendMessage(id, { text: `📢 Broadcast:\n${message}` });
+    }
+    await sock.sendMessage(sender, { text: '✅ Broadcast sent.' });
+    return;
+  }
+
+  // Block user
+  if (command.startsWith('.block ')) {
+    const number = command.replace('.block', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    if (!blocklist.includes(jid)) {
+      blocklist.push(jid);
+      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+      await sock.sendMessage(sender, { text: `✅ Blocked ${number}` });
+    }
+    return;
+  }
+
+  // Unblock user
+  if (command.startsWith('.unblock ')) {
+    const number = command.replace('.unblock', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    blocklist = blocklist.filter(u => u !== jid);
+    writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+    await sock.sendMessage(sender, { text: `✅ Unblocked ${number}` });
+    return;
+  }
+
+  // Toggle features
+  if (command.startsWith('.toggle ')) {
+    const feature = command.replace('.toggle', '').trim();
+    if (features.hasOwnProperty(feature)) {
+      features[feature] = !features[feature];
+      writeFileSync(featuresPath, JSON.stringify(features, null, 2));
+      await sock.sendMessage(sender, {
+        text: `🔁 ${feature} is now ${features[feature] ? 'enabled' : 'disabled'}`
+      });
+    }
     return;
   }
 
@@ -153,15 +211,13 @@ async function handleIncomingMessage(sock, msg) {
   }
 }
 
-async function autoviewStatus(sock) {
+// Autoview placeholder (Baileys removed getStatus)
+async function autoviewStatus() {
   if (!features.autoview) return;
-  try {
-    console.log('👁️ Autoview is active (placeholder, no getStatus function)');
-  } catch (err) {
-    console.error('❌ Autoview failed:', err);
-  }
+  console.log('👁️ Autoview placeholder - getStatus not available in Baileys.');
 }
 
+// Keep bot online
 function stayOnline(sock) {
   setInterval(() => {
     sock.sendPresenceUpdate('available');
@@ -169,6 +225,7 @@ function stayOnline(sock) {
   }, 30000);
 }
 
+// Setup event listeners
 function setupListeners(sock) {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
@@ -180,4 +237,4 @@ function setupListeners(sock) {
 
   setInterval(() => autoviewStatus(sock), 60000);
   stayOnline(sock);
-}
+        }
