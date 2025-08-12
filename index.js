@@ -2,13 +2,12 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
-import { startSession, generateLinkingCode } from './botManager.js'; // ✅ Updated import
+import { startSession, generateLinkingCode } from './botManager.js';
 
 // Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Setup
 const app = express();
 const PORT = process.env.PORT || 3000;
 const publicPath = path.join(process.cwd(), 'public');
@@ -19,14 +18,17 @@ if (!existsSync(publicPath)) mkdirSync(publicPath);
 // Serve static files like qr.png
 app.use(express.static(publicPath));
 
-// Homepage - shows QR + Link Code
+// Homepage - QR + Auto-Refreshing Link Code
 app.get('/', async (req, res) => {
   try {
-    const linkCode = await generateLinkingCode('main'); // generate link code
+    // Always generate a fresh code when someone opens the page
+    const linkCode = await generateLinkingCode('main');
+
     res.send(`
       <html>
         <head>
           <title>DansBot WhatsApp Connect</title>
+          <meta http-equiv="refresh" content="30"> <!-- Auto-refresh page every 30 seconds -->
           <style>
             body { font-family: Arial, sans-serif; text-align: center; padding: 30px; }
             img { border: 1px solid #ccc; margin-top: 10px; }
@@ -41,10 +43,15 @@ app.get('/', async (req, res) => {
           <h2>OR</h2>
           <p>Enter this Linking Code in WhatsApp Linked Devices:</p>
           <div class="code-box">${linkCode}</div>
+
+          <p style="margin-top: 20px; color: gray; font-size: 14px;">
+            Page refreshes every 30 seconds to keep codes valid.
+          </p>
         </body>
       </html>
     `);
   } catch (err) {
+    console.error('❌ Error generating link code:', err);
     res.status(500).send("❌ Failed to generate link code. Check server logs.");
   }
 });
