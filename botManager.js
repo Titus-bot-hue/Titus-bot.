@@ -60,8 +60,9 @@ async function generatePairingCode(sock) {
   }
   try {
     const code = await sock.requestPairingCode(raw);
+    // WhatsApp pairing codes expire quickly (~1 minute)
     setPairingFile(`Pairing code: ${code}  (expires in ~1 minute)`);
-    console.log(`🔑 New pairing code: ${code}`);
+    console.log(`🔑 New pairing code: ${code} (valid ~1 minute)`);
   } catch (e) {
     console.error('❌ Failed to generate pairing code:', e);
     setPairingFile('Pairing code: error (check logs)');
@@ -70,10 +71,13 @@ async function generatePairingCode(sock) {
 
 /** Start/restart a loop to refresh the pairing code while not connected */
 function startPairingLoop(sock) {
+  // run immediately once
   generatePairingCode(sock);
+  // refresh ~every 55s so there’s always a fresh code
   if (pairTimer) clearInterval(pairTimer);
-  pairTimer = setInterval(() => {
-    if (!isConnected) generatePairingCode(sock);
+  pairTimer = setInterval(async () => {
+    if (isConnected) return;
+    await generatePairingCode(sock);
   }, 55_000);
 }
 
@@ -96,7 +100,7 @@ export async function startSession(sessionId) {
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: false,
+    printQRInTerminal: false, // we manage QR ourselves
     browser: ['DansBot', 'Chrome', '122']
   });
 
@@ -107,6 +111,7 @@ export async function startSession(sessionId) {
 
     if (qr) {
       await saveQR(qr);
+      // When QR appears, also kick off pairing-code loop (if enabled)
       if (!isConnected) startPairingLoop(sock);
     }
 
@@ -125,6 +130,7 @@ export async function startSession(sessionId) {
         : 'unknown';
       console.log(`❌ Disconnected. Code: ${code}`);
 
+      // show “waiting” status & (re)start pairing loop so UI always has a fresh code
       setPairingFile('Waiting to connect…');
       startPairingLoop(sock);
 
@@ -134,6 +140,7 @@ export async function startSession(sessionId) {
       }
     }
 
+    // If we’re neither open nor closing, ensure the pairing loop is running
     if (!isConnected && !pairTimer) {
       startPairingLoop(sock);
     }
@@ -153,6 +160,7 @@ async function handleIncomingMessage(sock, msg) {
 
   const command = text.trim().toLowerCase();
 
+  // Basic commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
@@ -174,6 +182,7 @@ async function handleIncomingMessage(sock, msg) {
     return;
   }
 
+  // Unknown dot-commands helper
   if (command.startsWith('.')) {
     await sock.sendMessage(
       chatId,
@@ -183,6 +192,7 @@ async function handleIncomingMessage(sock, msg) {
     return;
   }
 
+  // Lightweight UX sugar
   try {
     if (features.autoread) {
       await sock.readMessages([msg.key]);
