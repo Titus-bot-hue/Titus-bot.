@@ -1,64 +1,60 @@
-// index.js
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync } from 'fs';
-import { startSession, startAllSessions } from './botManager.js';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { startSession } from './botManager.js'; // ✅ Make sure this path is correct
 
+// Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Setup
 const app = express();
 const PORT = process.env.PORT || 3000;
 const publicPath = path.join(process.cwd(), 'public');
 
+// Ensure public folder exists
 if (!existsSync(publicPath)) mkdirSync(publicPath);
 
-// Serve static files
+// Serve static files (QR code image, etc.)
 app.use(express.static(publicPath));
-app.use(express.urlencoded({ extended: true }));
 
-// Home page with QR + Pairing code form
+// Home page with both QR code & pairing code
 app.get('/', (req, res) => {
+  let pairingCode = '';
+  const pairingPath = path.join(publicPath, 'pairing.txt');
+
+  if (existsSync(pairingPath)) {
+    pairingCode = readFileSync(pairingPath, 'utf8').trim();
+  }
+
   res.send(`
     <html>
       <head>
-        <title>DansBot Connection</title>
+        <meta http-equiv="refresh" content="10">
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
+          img { border: 1px solid #ccc; margin-top: 20px; }
+          .pairing { margin-top: 20px; font-size: 18px; color: #333; }
+          .code-box {
+            display: inline-block;
+            background: #f4f4f4;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 20px;
+          }
+        </style>
       </head>
-      <body style="font-family: Arial; text-align:center; padding:40px;">
+      <body>
         <h1>🟢 DansBot WhatsApp Connection</h1>
-        
-        <h2>📸 QR Code Method</h2>
-        <p>Scan this QR with WhatsApp Linked Devices:</p>
-        <img src="/main_qr.png" width="300" style="border:1px solid #ccc;">
-        
-        <hr style="margin:40px 0;">
-        
-        <h2>🔑 Pairing Code Method</h2>
-        <form method="POST" action="/pair">
-          <label>Enter a Session ID (example: user1):</label><br><br>
-          <input type="text" name="sessionId" placeholder="Session name" required>
-          <button type="submit">Get Pairing Code</button>
-        </form>
-      </body>
-    </html>
-  `);
-});
-
-// Handle pairing code request
-app.post('/pair', (req, res) => {
-  const sessionId = req.body.sessionId.trim();
-  if (!sessionId) {
-    return res.send('❌ Session ID is required.');
-  }
-
-  startSession(sessionId, true); // start with pairing code
-  res.send(`
-    <html>
-      <body style="text-align:center; padding:40px;">
-        <h1>✅ Pairing Code Requested</h1>
-        <p>Check server logs for the pairing code for session: <b>${sessionId}</b></p>
-        <a href="/">⬅ Back</a>
+        <p>Scan this QR Code or use the pairing code below to link your WhatsApp.</p>
+        <img src="/qr.png" width="300" alt="QR Code">
+        <div class="pairing">
+          <p>🔑 Pairing Code:</p>
+          <div class="code-box">${pairingCode || 'Not generated yet'}</div>
+        </div>
+        <p style="margin-top:30px; color:gray;">This page auto-refreshes every 10 seconds.</p>
       </body>
     </html>
   `);
@@ -69,8 +65,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Start everything
 app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
-  startSession('main'); // default QR session
-  startAllSessions(); // reload saved sessions
+  startSession('main'); // ✅ Connect to WhatsApp & generate QR/Pairing Code
 });
