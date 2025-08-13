@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
-import { startSession } from './botManager.js';
+import { startSession } from './botManager.js'; // Make sure path is correct
 
 // Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +19,6 @@ if (!existsSync(publicPath)) mkdirSync(publicPath);
 // Serve QR image and other static files
 app.use(express.static(publicPath));
 
-// Show QR and pairing code in browser
 app.get('/', (req, res) => {
   let pairingCode = '';
   const pairingFile = path.join(publicPath, 'pairing.txt');
@@ -28,7 +27,7 @@ app.get('/', (req, res) => {
     try {
       pairingCode = readFileSync(pairingFile, 'utf8').trim();
     } catch (err) {
-      console.error('❌ Error reading pairing code:', err);
+      console.error('Error reading pairing code:', err);
     }
   }
 
