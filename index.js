@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
-import { startSession } from './botManager.js'; // ✅ Make sure this path is correct
+import { startSession } from './botManager.js';
 
 // Emulate __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -16,45 +16,35 @@ const publicPath = path.join(process.cwd(), 'public');
 // Ensure public folder exists
 if (!existsSync(publicPath)) mkdirSync(publicPath);
 
-// Serve static files (QR code image, etc.)
+// Serve static files (QR image, pairing.txt)
 app.use(express.static(publicPath));
 
-// Home page with both QR code & pairing code
+// Homepage — show QR and Pairing Code together
 app.get('/', (req, res) => {
-  let pairingCode = '';
-  const pairingPath = path.join(publicPath, 'pairing.txt');
-
-  if (existsSync(pairingPath)) {
-    pairingCode = readFileSync(pairingPath, 'utf8').trim();
-  }
-
   res.send(`
     <html>
       <head>
-        <meta http-equiv="refresh" content="10">
+        <title>DansBot WhatsApp Login</title>
+        <meta http-equiv="refresh" content="15"> <!-- auto-refresh every 15s -->
         <style>
-          body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-          img { border: 1px solid #ccc; margin-top: 20px; }
-          .pairing { margin-top: 20px; font-size: 18px; color: #333; }
-          .code-box {
-            display: inline-block;
-            background: #f4f4f4;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 20px;
-          }
+          body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+          img { border: 1px solid #ccc; margin-top: 10px; }
+          pre { background: #f5f5f5; padding: 10px; display: inline-block; border-radius: 5px; }
         </style>
       </head>
       <body>
-        <h1>🟢 DansBot WhatsApp Connection</h1>
-        <p>Scan this QR Code or use the pairing code below to link your WhatsApp.</p>
-        <img src="/qr.png" width="300" alt="QR Code">
-        <div class="pairing">
-          <p>🔑 Pairing Code:</p>
-          <div class="code-box">${pairingCode || 'Not generated yet'}</div>
-        </div>
-        <p style="margin-top:30px; color:gray;">This page auto-refreshes every 10 seconds.</p>
+        <h1>🟢 DansBot WhatsApp Login</h1>
+        <p>Scan this QR Code OR use the pairing code below to link WhatsApp.</p>
+        
+        <h2>QR Code Login</h2>
+        <img src="/qr.png" width="300" alt="QR Code will appear here">
+        
+        <h2>Pairing Code Login</h2>
+        <pre>${readPairingCode()}</pre>
+
+        <p style="margin-top:20px; font-size: 0.9em; color: gray;">
+          This page refreshes every 15 seconds. Pairing codes expire after ~1 minute.
+        </p>
       </body>
     </html>
   `);
@@ -65,8 +55,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start everything
+// Helper to read pairing.txt
+function readPairingCode() {
+  const file = path.join(publicPath, 'pairing.txt');
+  if (existsSync(file)) {
+    try {
+      return readFileSync(file, 'utf8').trim();
+    } catch {
+      return 'Error reading pairing.txt';
+    }
+  }
+  return 'No pairing code yet — please wait...';
+}
+
+// Start server & bot
 app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
-  startSession('main'); // ✅ Connect to WhatsApp & generate QR/Pairing Code
+  startSession('main');
 });
