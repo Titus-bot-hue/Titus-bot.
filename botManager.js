@@ -1,10 +1,8 @@
-// botManager.js
 import {
   makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  DisconnectReason,
-  generateRegistrationCode
+  DisconnectReason
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -14,38 +12,95 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// === FOLDERS ===
+/* -------------------- Paths & Folders -------------------- */
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// === FILES ===
-const usersPath = './users.json';
-let users = existsSync(usersPath) ? JSON.parse(readFileSync(usersPath)) : [];
+const pairingFile = join(publicFolder, 'pairing.txt');
+const qrFile = join(publicFolder, 'qr.png');
 
-// === FEATURES TOGGLES ===
-let features = {
-  autoread: true,
-  autoview: true,
-  faketyping: true,
-  weather: true,
-  quotes: true
-};
-
-// === SAVE USERS FUNCTION ===
-function saveUsers() {
-  writeFileSync(usersPath, JSON.stringify(users, null, 2));
+/* -------------------- Feature toggles -------------------- */
+let features = { autoread: true, faketyping: true };
+const featuresPath = './features.json';
+if (existsSync(featuresPath)) {
+  try { features = JSON.parse(readFileSync(featuresPath)); } catch {}
 }
 
-// === START SESSION ===
-export async function startSession(sessionId, usePairingCode = false) {
+/* -------------------- Pairing code state -------------------- */
+let isConnected = false;
+let pairTimer = null;
+
+/** Write the current pairing code (or status) to public/pairing.txt */
+function setPairingFile(text) {
+  try {
+    writeFileSync(pairingFile, `${text}\n`, 'utf8');
+  } catch (e) {
+    console.error('❌ Failed writing pairing.txt:', e);
+  }
+}
+
+/** Save QR image to public/qr.png */
+async function saveQR(qrData) {
+  try {
+    await QRCode.toFile(qrFile, qrData);
+    console.log(`✅ QR code saved to ${qrFile}`);
+  } catch (e) {
+    console.error('❌ Failed to save QR code:', e);
+  }
+}
+
+/** Generate a pairing code (valid ~1 minute) and save it */
+async function generatePairingCode(sock) {
+  const raw = process.env.PAIRING_NUMBER?.replace(/\D/g, '');
+  if (!raw) {
+    setPairingFile('Pairing code: (set PAIRING_NUMBER env to enable)');
+    return;
+  }
+  try {
+    const code = await sock.requestPairingCode(raw);
+    // WhatsApp pairing codes expire quickly (~1 minute)
+    setPairingFile(`Pairing code: ${code}  (expires in ~1 minute)`);
+    console.log(`🔑 New pairing code: ${code} (valid ~1 minute)`);
+  } catch (e) {
+    console.error('❌ Failed to generate pairing code:', e);
+    setPairingFile('Pairing code: error (check logs)');
+  }
+}
+
+/** Start/restart a loop to refresh the pairing code while not connected */
+function startPairingLoop(sock) {
+  // run immediately once
+  generatePairingCode(sock);
+  // refresh ~every 55s so there’s always a fresh code
+  if (pairTimer) clearInterval(pairTimer);
+  pairTimer = setInterval(async () => {
+    if (isConnected) return;
+    await generatePairingCode(sock);
+  }, 55_000);
+}
+
+/** Stop the pairing loop and mark file as connected */
+function stopPairingLoop() {
+  if (pairTimer) {
+    clearInterval(pairTimer);
+    pairTimer = null;
+  }
+  setPairingFile('Connected ✅');
+}
+
+/* -------------------- Main session start -------------------- */
+export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
-  const { version } = await fetchLatestBaileysVersion();
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+
+  console.log(`📦 Baileys v${version.join('.')}, latest: ${isLatest}`);
 
   const sock = makeWASocket({
     version,
     auth: state,
+    printQRInTerminal: false, // we manage QR ourselves
     browser: ['DansBot', 'Chrome', '122']
   });
 
@@ -54,110 +109,119 @@ export async function startSession(sessionId, usePairingCode = false) {
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    if (qr && !usePairingCode) {
-      const qrPath = join(publicFolder, `${sessionId}_qr.png`);
-      QRCode.toFile(qrPath, qr, (err) => {
-        if (err) console.error(`❌ QR save error for ${sessionId}:`, err);
-        else console.log(`✅ QR saved: ${qrPath}`);
-      });
+    if (qr) {
+      await saveQR(qr);
+      // When QR appears, also kick off pairing-code loop (if enabled)
+      if (!isConnected) startPairingLoop(sock);
     }
 
     if (connection === 'open') {
-      console.log(`✅ Session "${sessionId}" connected`);
-      if (!users.includes(sessionId)) {
-        users.push(sessionId);
-        saveUsers();
-      }
-      setupListeners(sock, sessionId);
+      isConnected = true;
+      console.log(`✅ WhatsApp session "${sessionId}" connected`);
+      stopPairingLoop();
+      setupListeners(sock);
     }
 
     if (connection === 'close') {
+      isConnected = false;
+
       const code = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Session "${sessionId}" closed. Code: ${code}`);
+      console.log(`❌ Disconnected. Code: ${code}`);
+
+      // show “waiting” status & (re)start pairing loop so UI always has a fresh code
+      setPairingFile('Waiting to connect…');
+      startPairingLoop(sock);
+
       if (code !== DisconnectReason.loggedOut) {
-        console.log(`🔁 Reconnecting "${sessionId}"...`);
-        startSession(sessionId, usePairingCode);
+        console.log('🔁 Reconnecting...');
+        startSession(sessionId);
       }
     }
-  });
 
-  if (usePairingCode) {
-    try {
-      const code = await generateRegistrationCode(sock, process.env.ADMIN_PHONE || '');
-      console.log(`📲 Pairing code for ${sessionId}: ${code}`);
-    } catch (err) {
-      console.error('❌ Pairing code error:', err);
+    // If we’re neither open nor closing, ensure the pairing loop is running
+    if (!isConnected && !pairTimer) {
+      startPairingLoop(sock);
     }
-  }
+  });
 }
 
-// === FEATURES ===
+/* -------------------- Message handling -------------------- */
 async function handleIncomingMessage(sock, msg) {
-  const sender = msg.key.remoteJid;
-  const text = msg.message?.conversation || '';
+  const chatId = msg.key.remoteJid;
+
+  const text =
+    msg.message?.conversation ||
+    msg.message?.extendedTextMessage?.text ||
+    msg.message?.imageMessage?.caption ||
+    msg.message?.videoMessage?.caption ||
+    '';
+
   const command = text.trim().toLowerCase();
 
-  // Commands
+  // Basic commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
-    '.menu': `📜 Menu:
-• .ping
-• .alive
-• .quote
-• .weather <city>
-• .menu`
+    '.status': `📊 Features:\n${Object.entries(features)
+      .map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`)
+      .join('\n')}`,
+    '.menu':
+      `📜 Menu\n` +
+      `• .ping — latency check\n` +
+      `• .alive — bot status\n` +
+      `• .status — feature toggles\n` +
+      `• (Login page shows both QR & Pairing Code)\n` +
+      `• .weather <city> — coming soon\n` +
+      `• .quote — coming soon`
   };
 
-  if (command in commands) {
-    await sock.sendMessage(sender, { text: commands[command] });
+  if (commands[command]) {
+    await sock.sendMessage(chatId, { text: commands[command] }, { quoted: msg });
     return;
   }
 
-  if (command === '.quote' && features.quotes) {
-    await sock.sendMessage(sender, { text: '💡 "Coming soon inspirational quote feature!"' });
+  // Unknown dot-commands helper
+  if (command.startsWith('.')) {
+    await sock.sendMessage(
+      chatId,
+      { text: `❓ Unknown command: ${command}\nType .menu to see available commands.` },
+      { quoted: msg }
+    );
+    return;
   }
 
-  if (command.startsWith('.weather') && features.weather) {
-    await sock.sendMessage(sender, { text: '🌦️ "Weather feature coming soon!"' });
-  }
-
-  // Autoread
-  if (features.autoread) {
-    try {
+  // Lightweight UX sugar
+  try {
+    if (features.autoread) {
       await sock.readMessages([msg.key]);
-      console.log(`👁️ Read message from ${sender}`);
-    } catch (err) {
-      console.error('❌ Autoread error:', err);
+      console.log(`👁️ Read message from ${chatId}`);
+    }
+  } catch (e) {
+    console.error('❌ Autoread failed:', e);
+  }
+
+  if (features.faketyping) {
+    try {
+      await sock.sendPresenceUpdate('composing', chatId);
+      await new Promise((r) => setTimeout(r, 1500));
+      await sock.sendPresenceUpdate('paused', chatId);
+    } catch (e) {
+      console.error('❌ Typing failed:', e);
     }
   }
-
-  // Faketyping
-  if (features.faketyping) {
-    await sock.sendPresenceUpdate('composing', sender);
-    await new Promise(res => setTimeout(res, 2000));
-    await sock.sendPresenceUpdate('paused', sender);
-  }
 }
 
-// === STATUS VIEWING ===
-async function autoviewStatus(sock) {
-  if (!features.autoview) return;
-  console.log('👁️ Autoview status — Coming soon in new Baileys update');
-}
-
-// === ONLINE KEEP ALIVE ===
+/* -------------------- Keep-alive & listeners -------------------- */
 function stayOnline(sock) {
   setInterval(() => {
-    sock.sendPresenceUpdate('available');
-    console.log('🟢 Staying online...');
-  }, 30000);
+    sock.sendPresenceUpdate('available').catch(() => {});
+    console.log('🟢 Bot is online');
+  }, 30_000);
 }
 
-// === LISTENERS ===
-function setupListeners(sock, sessionId) {
+function setupListeners(sock) {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.key.fromMe) {
@@ -166,16 +230,5 @@ function setupListeners(sock, sessionId) {
     }
   });
 
-  setInterval(() => autoviewStatus(sock), 60000);
   stayOnline(sock);
-}
-
-// === LOAD ALL USERS ON STARTUP ===
-export function startAllSessions() {
-  if (users.length === 0) {
-    console.log('⚠️ No saved sessions found. Use QR or pairing code to connect a new one.');
-  } else {
-    console.log(`🔄 Reloading ${users.length} saved sessions...`);
-    users.forEach(sessionId => startSession(sessionId));
-  }
 }
