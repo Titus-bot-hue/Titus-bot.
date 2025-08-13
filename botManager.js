@@ -1,8 +1,10 @@
+// botManager.js
 import {
   makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  DisconnectReason
+  DisconnectReason,
+  generateRegistrationCode
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -12,202 +14,150 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// === FOLDERS ===
 const authFolder = './auth';
+const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
+if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-const blocklistPath = './blocklist.json';
-const featuresPath = './features.json';
+// === FILES ===
+const usersPath = './users.json';
+let users = existsSync(usersPath) ? JSON.parse(readFileSync(usersPath)) : [];
 
-let blocklist = existsSync(blocklistPath)
-  ? JSON.parse(readFileSync(blocklistPath))
-  : [];
+// === FEATURES TOGGLES ===
+let features = {
+  autoread: true,
+  autoview: true,
+  faketyping: true,
+  weather: true,
+  quotes: true
+};
 
-let features = existsSync(featuresPath)
-  ? JSON.parse(readFileSync(featuresPath))
-  : {
-      autoview: true,
-      faketyping: true
-    };
+// === SAVE USERS FUNCTION ===
+function saveUsers() {
+  writeFileSync(usersPath, JSON.stringify(users, null, 2));
+}
 
-let statusCache = {};
-
-/**
- * Start a WhatsApp session
- */
-export async function startSession(sessionId) {
-  const sessionPath = join(authFolder, sessionId);
-  if (!existsSync(sessionPath)) mkdirSync(sessionPath);
-
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+// === START SESSION ===
+export async function startSession(sessionId, usePairingCode = false) {
+  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: false,
     browser: ['DansBot', 'Chrome', '122']
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    if (qr) {
-      const qrPath = join('public', 'qr.png');
+    if (qr && !usePairingCode) {
+      const qrPath = join(publicFolder, `${sessionId}_qr.png`);
       QRCode.toFile(qrPath, qr, (err) => {
-        if (err) console.error('❌ Failed to save QR:', err);
-        else console.log(`✅ QR saved to ${qrPath}`);
+        if (err) console.error(`❌ QR save error for ${sessionId}:`, err);
+        else console.log(`✅ QR saved: ${qrPath}`);
       });
     }
 
     if (connection === 'open') {
-      console.log(`✅ WhatsApp session "${sessionId}" connected`);
-      setupListeners(sock);
+      console.log(`✅ Session "${sessionId}" connected`);
+      if (!users.includes(sessionId)) {
+        users.push(sessionId);
+        saveUsers();
+      }
+      setupListeners(sock, sessionId);
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Disconnected (${code})`);
-
+      console.log(`❌ Session "${sessionId}" closed. Code: ${code}`);
       if (code !== DisconnectReason.loggedOut) {
-        console.log('🔁 Reconnecting...');
-        startSession(sessionId);
+        console.log(`🔁 Reconnecting "${sessionId}"...`);
+        startSession(sessionId, usePairingCode);
       }
     }
   });
+
+  if (usePairingCode) {
+    try {
+      const code = await generateRegistrationCode(sock, process.env.ADMIN_PHONE || '');
+      console.log(`📲 Pairing code for ${sessionId}: ${code}`);
+    } catch (err) {
+      console.error('❌ Pairing code error:', err);
+    }
+  }
 }
 
-/**
- * Generate a pairing code for a user session
- */
-export async function getPairingCode(sessionId) {
-  const sessionPath = join(authFolder, sessionId);
-  if (!existsSync(sessionPath)) mkdirSync(sessionPath);
-
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    browser: ['DansBot', 'Chrome', '122']
-  });
-
-  // Just get pairing code and close connection
-  return new Promise((resolve) => {
-    sock.ev.on('connection.update', async (update) => {
-      if (update.pairingCode) {
-        resolve(update.pairingCode);
-        sock.ws.close();
-      }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-  });
-}
-
-/**
- * Handle incoming messages
- */
+// === FEATURES ===
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
-  const text =
-    msg.message?.conversation ||
-    msg.message?.extendedTextMessage?.text ||
-    msg.message?.imageMessage?.caption ||
-    '';
+  const text = msg.message?.conversation || '';
   const command = text.trim().toLowerCase();
 
-  if (blocklist.includes(sender)) return;
-
+  // Commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
-    '.status': `📊 Status:\n${Object.entries(features)
-      .map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`)
-      .join('\n')}`,
-    '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .quote (coming soon)\n• .weather (coming soon)\n• .tiktok (coming soon)\n• .ai (coming soon)`
+    '.menu': `📜 Menu:
+• .ping
+• .alive
+• .quote
+• .weather <city>
+• .menu`
   };
 
-  if (commands[command]) {
-    await sock.sendMessage(sender, { text: commands[command] }, { quoted: msg });
+  if (command in commands) {
+    await sock.sendMessage(sender, { text: commands[command] });
     return;
   }
 
-  try {
-    await sock.readMessages([msg.key]);
-  } catch (err) {
-    console.error('❌ Autoread failed:', err);
+  if (command === '.quote' && features.quotes) {
+    await sock.sendMessage(sender, { text: '💡 "Coming soon inspirational quote feature!"' });
   }
 
-  if (features.faketyping) {
+  if (command.startsWith('.weather') && features.weather) {
+    await sock.sendMessage(sender, { text: '🌦️ "Weather feature coming soon!"' });
+  }
+
+  // Autoread
+  if (features.autoread) {
     try {
-      await sock.sendPresenceUpdate('composing', sender);
-      await new Promise((res) => setTimeout(res, 2000));
-      await sock.sendPresenceUpdate('paused', sender);
+      await sock.readMessages([msg.key]);
+      console.log(`👁️ Read message from ${sender}`);
     } catch (err) {
-      console.error('❌ Typing failed:', err);
+      console.error('❌ Autoread error:', err);
     }
+  }
+
+  // Faketyping
+  if (features.faketyping) {
+    await sock.sendPresenceUpdate('composing', sender);
+    await new Promise(res => setTimeout(res, 2000));
+    await sock.sendPresenceUpdate('paused', sender);
   }
 }
 
-/**
- * Auto view WhatsApp statuses
- */
+// === STATUS VIEWING ===
 async function autoviewStatus(sock) {
   if (!features.autoview) return;
-  try {
-    const statusList = await sock.getStatus();
-    for (const status of statusList) {
-      for (const story of status.status) {
-        await sock.readStatus(status.id, story.timestamp);
-        console.log(`👁️ Viewed status from ${status.id}`);
-      }
-    }
-  } catch (err) {
-    console.error('❌ Autoview failed:', err);
-  }
+  console.log('👁️ Autoview status — Coming soon in new Baileys update');
 }
 
-/**
- * Monitor statuses for new ones
- */
-async function monitorStatus(sock) {
-  try {
-    const statusList = await sock.getStatus();
-    for (const status of statusList) {
-      const jid = status.id;
-      const stories = status.status;
-      if (!statusCache[jid]) statusCache[jid] = [];
-
-      for (const story of stories) {
-        if (!statusCache[jid].some((s) => s.timestamp === story.timestamp)) {
-          statusCache[jid].push(story);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('❌ Monitor status failed:', err);
-  }
-}
-
-/**
- * Keep bot online
- */
+// === ONLINE KEEP ALIVE ===
 function stayOnline(sock) {
   setInterval(() => {
     sock.sendPresenceUpdate('available');
+    console.log('🟢 Staying online...');
   }, 30000);
 }
 
-/**
- * Set up listeners
- */
-function setupListeners(sock) {
+// === LISTENERS ===
+function setupListeners(sock, sessionId) {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (!msg.key.fromMe) {
@@ -217,6 +167,15 @@ function setupListeners(sock) {
   });
 
   setInterval(() => autoviewStatus(sock), 60000);
-  setInterval(() => monitorStatus(sock), 60000);
   stayOnline(sock);
+}
+
+// === LOAD ALL USERS ON STARTUP ===
+export function startAllSessions() {
+  if (users.length === 0) {
+    console.log('⚠️ No saved sessions found. Use QR or pairing code to connect a new one.');
+  } else {
+    console.log(`🔄 Reloading ${users.length} saved sessions...`);
+    users.forEach(sessionId => startSession(sessionId));
+  }
 }
