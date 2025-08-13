@@ -12,215 +12,216 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-/* -------------------- Paths & Folders -------------------- */
+// Directories
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-const pairingFile = join(publicFolder, 'pairing.txt');
-const qrFile = join(publicFolder, 'qr.png');
-
-/* -------------------- Feature toggles -------------------- */
-let features = { autoread: true, faketyping: true };
+// Config
+const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
-if (existsSync(featuresPath)) {
-  try { features = JSON.parse(readFileSync(featuresPath)); } catch {}
-}
 
-/* -------------------- Pairing code state -------------------- */
-let isConnected = false;
-let pairTimer = null;
+// Load blocklist
+let blocklist = existsSync(blocklistPath)
+  ? JSON.parse(readFileSync(blocklistPath))
+  : [];
 
-/** Write the current pairing code (or status) to public/pairing.txt */
-function setPairingFile(text) {
-  try {
-    writeFileSync(pairingFile, `${text}\n`, 'utf8');
-  } catch (e) {
-    console.error('❌ Failed writing pairing.txt:', e);
-  }
-}
+// Load feature toggles
+let features = existsSync(featuresPath)
+  ? JSON.parse(readFileSync(featuresPath))
+  : {
+      autoview: true,
+      faketyping: true
+    };
 
-/** Save QR image to public/qr.png */
-async function saveQR(qrData) {
-  try {
-    await QRCode.toFile(qrFile, qrData);
-    console.log(`✅ QR code saved to ${qrFile}`);
-  } catch (e) {
-    console.error('❌ Failed to save QR code:', e);
-  }
-}
+let statusCache = {};
 
-/** Generate a pairing code (valid ~1 minute) and save it */
-async function generatePairingCode(sock) {
-  const raw = process.env.PAIRING_NUMBER?.replace(/\D/g, '');
-  if (!raw) {
-    setPairingFile('Pairing code: (set PAIRING_NUMBER env to enable)');
-    return;
-  }
-  try {
-    const code = await sock.requestPairingCode(raw);
-    // WhatsApp pairing codes expire quickly (~1 minute)
-    setPairingFile(`Pairing code: ${code}  (expires in ~1 minute)`);
-    console.log(`🔑 New pairing code: ${code} (valid ~1 minute)`);
-  } catch (e) {
-    console.error('❌ Failed to generate pairing code:', e);
-    setPairingFile('Pairing code: error (check logs)');
-  }
-}
-
-/** Start/restart a loop to refresh the pairing code while not connected */
-function startPairingLoop(sock) {
-  // run immediately once
-  generatePairingCode(sock);
-  // refresh ~every 55s so there’s always a fresh code
-  if (pairTimer) clearInterval(pairTimer);
-  pairTimer = setInterval(async () => {
-    if (isConnected) return;
-    await generatePairingCode(sock);
-  }, 55_000);
-}
-
-/** Stop the pairing loop and mark file as connected */
-function stopPairingLoop() {
-  if (pairTimer) {
-    clearInterval(pairTimer);
-    pairTimer = null;
-  }
-  setPairingFile('Connected ✅');
-}
-
-/* -------------------- Main session start -------------------- */
 export async function startSession(sessionId) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
-  const { version, isLatest } = await fetchLatestBaileysVersion();
+  const { version } = await fetchLatestBaileysVersion();
 
-  console.log(`📦 Baileys v${version.join('.')}, latest: ${isLatest}`);
+  console.log(`📦 Baileys v${version.join('.')}`);
 
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: false, // we manage QR ourselves
+    printQRInTerminal: false, // We handle QR manually
     browser: ['DansBot', 'Chrome', '122']
   });
 
   sock.ev.on('creds.update', saveCreds);
 
+  // Connection handler
   sock.ev.on('connection.update', async (update) => {
-    const { connection, qr, lastDisconnect } = update;
+    const { connection, qr, lastDisconnect, pairingCode } = update;
 
+    // QR Method
     if (qr) {
-      await saveQR(qr);
-      // When QR appears, also kick off pairing-code loop (if enabled)
-      if (!isConnected) startPairingLoop(sock);
+      const qrPath = join(publicFolder, 'qr.png');
+      QRCode.toFile(qrPath, qr, (err) => {
+        if (err) console.error('❌ Failed to save QR code:', err);
+        else console.log(`✅ QR code saved to ${qrPath}`);
+      });
+    }
+
+    // Pairing Code Method
+    if (pairingCode) {
+      const codePath = join(publicFolder, 'pairing.txt');
+      writeFileSync(codePath, `Your pairing code is: ${pairingCode}`);
+      console.log(`🔗 Pairing code saved to ${codePath}`);
     }
 
     if (connection === 'open') {
-      isConnected = true;
       console.log(`✅ WhatsApp session "${sessionId}" connected`);
-      stopPairingLoop();
       setupListeners(sock);
     }
 
     if (connection === 'close') {
-      isConnected = false;
-
-      const code = lastDisconnect?.error instanceof Boom
+      const statusCode = lastDisconnect?.error instanceof Boom
         ? lastDisconnect.error.output.statusCode
         : 'unknown';
-      console.log(`❌ Disconnected. Code: ${code}`);
+      console.log(`❌ Disconnected. Code: ${statusCode}`);
 
-      // show “waiting” status & (re)start pairing loop so UI always has a fresh code
-      setPairingFile('Waiting to connect…');
-      startPairingLoop(sock);
-
-      if (code !== DisconnectReason.loggedOut) {
+      if (statusCode !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconnecting...');
         startSession(sessionId);
       }
     }
-
-    // If we’re neither open nor closing, ensure the pairing loop is running
-    if (!isConnected && !pairTimer) {
-      startPairingLoop(sock);
-    }
   });
 }
 
-/* -------------------- Message handling -------------------- */
+// Handle messages
 async function handleIncomingMessage(sock, msg) {
-  const chatId = msg.key.remoteJid;
-
+  const sender = msg.key.remoteJid;
   const text =
     msg.message?.conversation ||
     msg.message?.extendedTextMessage?.text ||
     msg.message?.imageMessage?.caption ||
-    msg.message?.videoMessage?.caption ||
     '';
-
   const command = text.trim().toLowerCase();
 
-  // Basic commands
+  if (blocklist.includes(sender)) {
+    console.log(`⛔ Blocked user: ${sender}`);
+    return;
+  }
+
+  // Commands for everyone
+  if (command === '.shutdown') {
+    await sock.sendMessage(sender, { text: '🛑 Shutting down...' }, { quoted: msg });
+    process.exit(0);
+  }
+
+  if (command.startsWith('.broadcast')) {
+    const message = command.replace('.broadcast', '').trim();
+    if (!message) return await sock.sendMessage(sender, { text: '⚠️ Provide a message.' }, { quoted: msg });
+
+    const chats = await sock.groupFetchAllParticipating();
+    for (const id of Object.keys(chats)) {
+      await sock.sendMessage(id, { text: `📢 Broadcast:\n${message}` });
+    }
+    await sock.sendMessage(sender, { text: '✅ Broadcast sent.' }, { quoted: msg });
+  }
+
+  if (command.startsWith('.block')) {
+    const number = command.replace('.block', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    if (!blocklist.includes(jid)) {
+      blocklist.push(jid);
+      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+      await sock.sendMessage(sender, { text: `✅ Blocked ${number}` }, { quoted: msg });
+    }
+  }
+
+  if (command.startsWith('.unblock')) {
+    const number = command.replace('.unblock', '').trim();
+    const jid = `${number}@s.whatsapp.net`;
+    const index = blocklist.indexOf(jid);
+    if (index !== -1) {
+      blocklist.splice(index, 1);
+      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
+      await sock.sendMessage(sender, { text: `✅ Unblocked ${number}` }, { quoted: msg });
+    }
+  }
+
+  if (command.startsWith('.toggle')) {
+    const feature = command.replace('.toggle', '').trim();
+    if (!features.hasOwnProperty(feature)) {
+      await sock.sendMessage(sender, { text: `❌ Unknown feature: ${feature}` }, { quoted: msg });
+    } else {
+      features[feature] = !features[feature];
+      writeFileSync(featuresPath, JSON.stringify(features, null, 2));
+      await sock.sendMessage(sender, {
+        text: `🔁 ${feature} is now ${features[feature] ? 'enabled' : 'disabled'}`
+      }, { quoted: msg });
+    }
+  }
+
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
-    '.status': `📊 Features:\n${Object.entries(features)
-      .map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`)
-      .join('\n')}`,
-    '.menu':
-      `📜 Menu\n` +
-      `• .ping — latency check\n` +
-      `• .alive — bot status\n` +
-      `• .status — feature toggles\n` +
-      `• (Login page shows both QR & Pairing Code)\n` +
-      `• .weather <city> — coming soon\n` +
-      `• .quote — coming soon`
+    '.status': `📊 Status:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
+    '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .shutdown\n• .broadcast <msg>\n• .block <number>\n• .unblock <number>\n• .toggle <feature>`
   };
 
   if (commands[command]) {
-    await sock.sendMessage(chatId, { text: commands[command] }, { quoted: msg });
+    await sock.sendMessage(sender, { text: commands[command] }, { quoted: msg });
     return;
   }
 
-  // Unknown dot-commands helper
-  if (command.startsWith('.')) {
-    await sock.sendMessage(
-      chatId,
-      { text: `❓ Unknown command: ${command}\nType .menu to see available commands.` },
-      { quoted: msg }
-    );
+  if (command.startsWith('.') && !commands[command]) {
+    await sock.sendMessage(sender, {
+      text: `❓ Unknown command: ${command}\nType .menu to see available commands.`
+    }, { quoted: msg });
     return;
   }
 
-  // Lightweight UX sugar
   try {
-    if (features.autoread) {
-      await sock.readMessages([msg.key]);
-      console.log(`👁️ Read message from ${chatId}`);
-    }
-  } catch (e) {
-    console.error('❌ Autoread failed:', e);
+    await sock.readMessages([msg.key]);
+    console.log(`👁️ Read message from ${sender}`);
+  } catch (err) {
+    console.error('❌ Autoread failed:', err);
   }
 
   if (features.faketyping) {
     try {
-      await sock.sendPresenceUpdate('composing', chatId);
-      await new Promise((r) => setTimeout(r, 1500));
-      await sock.sendPresenceUpdate('paused', chatId);
-    } catch (e) {
-      console.error('❌ Typing failed:', e);
+      await sock.sendPresenceUpdate('composing', sender);
+      await new Promise(res => setTimeout(res, 3000));
+      await sock.sendPresenceUpdate('paused', sender);
+    } catch (err) {
+      console.error('❌ Typing failed:', err);
     }
   }
 }
 
-/* -------------------- Keep-alive & listeners -------------------- */
-function stayOnline(sock) {
-  setInterval(() => {
-    sock.sendPresenceUpdate('available').catch(() => {});
-    console.log('🟢 Bot is online');
-  }, 30_000);
+// Autoview status
+async function autoviewStatus(sock) {
+  if (!features.autoview) return;
+  try {
+    console.log('👁️ Autoview is enabled (stub - API removed)');
+  } catch (err) {
+    console.error('❌ Autoview failed:', err);
+  }
 }
 
+// Monitor status
+async function monitorStatus(sock) {
+  try {
+    console.log('📡 Monitor status is running (stub - API removed)');
+  } catch (err) {
+    console.error('❌ Monitor status failed:', err);
+  }
+}
+
+// Keep online
+function stayOnline(sock) {
+  setInterval(() => {
+    sock.sendPresenceUpdate('available');
+    console.log('🟢 Bot is online');
+  }, 30000);
+}
+
+// Listeners
 function setupListeners(sock) {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
@@ -230,5 +231,27 @@ function setupListeners(sock) {
     }
   });
 
+  sock.ev.on('messages.update', async updates => {
+    for (const update of updates) {
+      if (update.messageStubType === 8 && update.key) {
+        const chatId = update.key.remoteJid;
+        const messageId = update.key.id;
+        try {
+          const originalMsg = await sock.loadMessage(chatId, messageId);
+          if (originalMsg?.message) {
+            await sock.sendMessage(chatId, {
+              text: `🚨 Antidelete:\n${JSON.stringify(originalMsg.message, null, 2)}`
+            });
+            console.log(`🛡️ Restored deleted message in ${chatId}`);
+          }
+        } catch (err) {
+          console.error('❌ Antidelete failed:', err);
+        }
+      }
+    }
+  });
+
+  setInterval(() => autoviewStatus(sock), 60000);
+  setInterval(() => monitorStatus(sock), 60000);
   stayOnline(sock);
 }
