@@ -46,7 +46,7 @@ export async function startSession(sessionId) {
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: false, // We handle QR manually
+    printQRInTerminal: false,
     browser: ['DansBot', 'Chrome', '122']
   });
 
@@ -56,7 +56,7 @@ export async function startSession(sessionId) {
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr, lastDisconnect, pairingCode } = update;
 
-    // QR Method
+    // Save QR Method
     if (qr) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
@@ -65,7 +65,7 @@ export async function startSession(sessionId) {
       });
     }
 
-    // Pairing Code Method
+    // Save Pairing Code Method
     if (pairingCode) {
       const codePath = join(publicFolder, 'pairing.txt');
       writeFileSync(codePath, `Your pairing code is: ${pairingCode}`);
@@ -197,20 +197,12 @@ async function handleIncomingMessage(sock, msg) {
 // Autoview status
 async function autoviewStatus(sock) {
   if (!features.autoview) return;
-  try {
-    console.log('👁️ Autoview is enabled (stub - API removed)');
-  } catch (err) {
-    console.error('❌ Autoview failed:', err);
-  }
+  console.log('👁️ Autoview is enabled (stub - API removed)');
 }
 
 // Monitor status
 async function monitorStatus(sock) {
-  try {
-    console.log('📡 Monitor status is running (stub - API removed)');
-  } catch (err) {
-    console.error('❌ Monitor status failed:', err);
-  }
+  console.log('📡 Monitor status is running (stub - API removed)');
 }
 
 // Keep online
