@@ -38,7 +38,10 @@ let features = existsSync(featuresPath)
 let statusCache = {};
 
 export async function startSession(sessionId) {
-  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
+  const authPath = join(authFolder, sessionId);
+  const isFirstTime = !existsSync(authPath) || !existsSync(join(authPath, 'creds.json'));
+
+  const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
 
   console.log(`📦 Baileys v${version.join('.')}`);
@@ -51,6 +54,19 @@ export async function startSession(sessionId) {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // Generate pairing code automatically on first time
+  if (isFirstTime) {
+    try {
+      console.log("⏳ Generating pairing code...");
+      const code = await sock.requestPairingCode(process.env.PAIRING_NUMBER || '');
+      const codePath = join(publicFolder, 'pairing.txt');
+      writeFileSync(codePath, `Your pairing code is: ${code}`);
+      console.log(`🔗 Pairing code generated: ${code}`);
+    } catch (err) {
+      console.error("❌ Failed to generate pairing code:", err);
+    }
+  }
 
   // Connection handler
   sock.ev.on('connection.update', async (update) => {
