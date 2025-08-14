@@ -12,13 +12,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Directories
+// Folders
 const authFolder = './auth';
 const publicFolder = join(process.cwd(), 'public');
 if (!existsSync(authFolder)) mkdirSync(authFolder);
 if (!existsSync(publicFolder)) mkdirSync(publicFolder);
 
-// Config
+// Config paths
 const blocklistPath = './blocklist.json';
 const featuresPath = './features.json';
 
@@ -35,31 +35,8 @@ let features = existsSync(featuresPath)
       faketyping: true
     };
 
-// ✅ Function to request pairing code for a given WhatsApp number
-export async function requestPairingCodeForNumber(number) {
-  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, 'main'));
-  const { version } = await fetchLatestBaileysVersion();
-  
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    browser: ['DansBot', 'Chrome', '122']
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  try {
-    const code = await sock.requestPairingCode(number);
-    console.log(`📱 Pairing code for ${number}: ${code}`);
-    return code;
-  } catch (err) {
-    console.error('❌ Failed to get pairing code:', err);
-    return null;
-  }
-}
-
-export async function startSession(sessionId) {
+// Main function
+export async function startSession(sessionId, phoneNumber = null) {
   const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version } = await fetchLatestBaileysVersion();
 
@@ -74,24 +51,28 @@ export async function startSession(sessionId) {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Connection handler
   sock.ev.on('connection.update', async (update) => {
-    const { connection, qr, lastDisconnect, pairingCode } = update;
+    const { connection, qr, lastDisconnect } = update;
 
-    // Save QR Method
-    if (qr) {
+    // QR Method (only if no phone number provided)
+    if (qr && !phoneNumber) {
       const qrPath = join(publicFolder, 'qr.png');
       QRCode.toFile(qrPath, qr, (err) => {
         if (err) console.error('❌ Failed to save QR code:', err);
-        else console.log(`✅ QR code saved to ${qrPath}`);
+        else console.log(`✅ QR code saved at ${qrPath}`);
       });
     }
 
-    // Save Pairing Code Method (from WhatsApp Web link option)
-    if (pairingCode) {
-      const codePath = join(publicFolder, 'pairing.txt');
-      writeFileSync(codePath, `Your pairing code is: ${pairingCode}`);
-      console.log(`🔗 Pairing code saved to ${codePath}`);
+    // Pairing Code Method (if phone number provided)
+    if (phoneNumber && connection === 'connecting') {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        const codePath = join(publicFolder, 'pairing.txt');
+        writeFileSync(codePath, code);
+        console.log(`🔗 Pairing code for ${phoneNumber}: ${code}`);
+      } catch (err) {
+        console.error('❌ Failed to generate pairing code:', err);
+      }
     }
 
     if (connection === 'open') {
@@ -107,13 +88,13 @@ export async function startSession(sessionId) {
 
       if (statusCode !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconnecting...');
-        startSession(sessionId);
+        startSession(sessionId, phoneNumber);
       }
     }
   });
 }
 
-// Handle messages
+// Handle incoming messages
 async function handleIncomingMessage(sock, msg) {
   const sender = msg.key.remoteJid;
   const text =
@@ -123,62 +104,9 @@ async function handleIncomingMessage(sock, msg) {
     '';
   const command = text.trim().toLowerCase();
 
-  if (blocklist.includes(sender)) {
-    console.log(`⛔ Blocked user: ${sender}`);
-    return;
-  }
+  if (blocklist.includes(sender)) return;
 
-  // Commands for everyone
-  if (command === '.shutdown') {
-    await sock.sendMessage(sender, { text: '🛑 Shutting down...' }, { quoted: msg });
-    process.exit(0);
-  }
-
-  if (command.startsWith('.broadcast')) {
-    const message = command.replace('.broadcast', '').trim();
-    if (!message) return await sock.sendMessage(sender, { text: '⚠️ Provide a message.' }, { quoted: msg });
-
-    const chats = await sock.groupFetchAllParticipating();
-    for (const id of Object.keys(chats)) {
-      await sock.sendMessage(id, { text: `📢 Broadcast:\n${message}` });
-    }
-    await sock.sendMessage(sender, { text: '✅ Broadcast sent.' }, { quoted: msg });
-  }
-
-  if (command.startsWith('.block')) {
-    const number = command.replace('.block', '').trim();
-    const jid = `${number}@s.whatsapp.net`;
-    if (!blocklist.includes(jid)) {
-      blocklist.push(jid);
-      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
-      await sock.sendMessage(sender, { text: `✅ Blocked ${number}` }, { quoted: msg });
-    }
-  }
-
-  if (command.startsWith('.unblock')) {
-    const number = command.replace('.unblock', '').trim();
-    const jid = `${number}@s.whatsapp.net`;
-    const index = blocklist.indexOf(jid);
-    if (index !== -1) {
-      blocklist.splice(index, 1);
-      writeFileSync(blocklistPath, JSON.stringify(blocklist, null, 2));
-      await sock.sendMessage(sender, { text: `✅ Unblocked ${number}` }, { quoted: msg });
-    }
-  }
-
-  if (command.startsWith('.toggle')) {
-    const feature = command.replace('.toggle', '').trim();
-    if (!features.hasOwnProperty(feature)) {
-      await sock.sendMessage(sender, { text: `❌ Unknown feature: ${feature}` }, { quoted: msg });
-    } else {
-      features[feature] = !features[feature];
-      writeFileSync(featuresPath, JSON.stringify(features, null, 2));
-      await sock.sendMessage(sender, {
-        text: `🔁 ${feature} is now ${features[feature] ? 'enabled' : 'disabled'}`
-      }, { quoted: msg });
-    }
-  }
-
+  // Commands
   const commands = {
     '.ping': '🏓 Pong!',
     '.alive': '✅ DansBot is alive!',
@@ -195,77 +123,30 @@ async function handleIncomingMessage(sock, msg) {
     await sock.sendMessage(sender, {
       text: `❓ Unknown command: ${command}\nType .menu to see available commands.`
     }, { quoted: msg });
-    return;
   }
 
-  try {
-    await sock.readMessages([msg.key]);
-    console.log(`👁️ Read message from ${sender}`);
-  } catch (err) {
-    console.error('❌ Autoread failed:', err);
-  }
+  // Auto-read messages
+  await sock.readMessages([msg.key]);
 
+  // Fake typing effect
   if (features.faketyping) {
-    try {
-      await sock.sendPresenceUpdate('composing', sender);
-      await new Promise(res => setTimeout(res, 3000));
-      await sock.sendPresenceUpdate('paused', sender);
-    } catch (err) {
-      console.error('❌ Typing failed:', err);
-    }
+    await sock.sendPresenceUpdate('composing', sender);
+    await new Promise(res => setTimeout(res, 2000));
+    await sock.sendPresenceUpdate('paused', sender);
   }
 }
 
-// Autoview status
-async function autoviewStatus(sock) {
-  if (!features.autoview) return;
-  console.log('👁️ Autoview is enabled (stub - API removed)');
-}
+// Event listeners
+function setupListeners(sock) {
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    for (const msg of messages) {
+      if (!msg.key.fromMe) await handleIncomingMessage(sock, msg);
+    }
+  });
 
-// Monitor status
-async function monitorStatus(sock) {
-  console.log('📡 Monitor status is running (stub - API removed)');
-}
-
-// Keep online
-function stayOnline(sock) {
+  // Keep bot online
   setInterval(() => {
     sock.sendPresenceUpdate('available');
     console.log('🟢 Bot is online');
   }, 30000);
-}
-
-// Listeners
-function setupListeners(sock) {
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    for (const msg of messages) {
-      if (!msg.key.fromMe) {
-        await handleIncomingMessage(sock, msg);
-      }
-    }
-  });
-
-  sock.ev.on('messages.update', async updates => {
-    for (const update of updates) {
-      if (update.messageStubType === 8 && update.key) {
-        const chatId = update.key.remoteJid;
-        const messageId = update.key.id;
-        try {
-          const originalMsg = await sock.loadMessage(chatId, messageId);
-          if (originalMsg?.message) {
-            await sock.sendMessage(chatId, {
-              text: `🚨 Antidelete:\n${JSON.stringify(originalMsg.message, null, 2)}`
-            });
-            console.log(`🛡️ Restored deleted message in ${chatId}`);
-          }
-        } catch (err) {
-          console.error('❌ Antidelete failed:', err);
-        }
-      }
-    }
-  });
-
-  setInterval(() => autoviewStatus(sock), 60000);
-  setInterval(() => monitorStatus(sock), 60000);
-  stayOnline(sock);
 }
