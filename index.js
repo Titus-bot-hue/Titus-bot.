@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { startSession } from './botManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,12 +21,19 @@ app.use(express.static(publicPath));
 app.get('/', (req, res) => {
   let pairingCode = '';
   const pairingFile = path.join(publicPath, 'pairing.txt');
-  if (existsSync(pairingFile)) {
+
+  // ✅ Ensure pairing.txt exists (prevents "Generating..." forever)
+  if (!existsSync(pairingFile)) {
+    writeFileSync(pairingFile, '⌛ Generating... refresh in a moment');
+  } else {
     pairingCode = readFileSync(pairingFile, 'utf8').trim();
   }
 
   res.send(`
     <html>
+      <head>
+        <meta http-equiv="refresh" content="5"> <!-- Auto refresh every 5s until code shows -->
+      </head>
       <body style="text-align:center; padding:40px; font-family: Arial, sans-serif;">
         <h1>🟢 DansBot Connection</h1>
         <p>Use either method below to link your WhatsApp:</p>
@@ -39,7 +46,7 @@ app.get('/', (req, res) => {
         <div style="margin-bottom:40px;">
           <h2>🔢 Pairing Code</h2>
           <p style="font-size:24px; font-weight:bold; color:green;">
-            ${pairingCode || '⌛ Generating... refresh in a moment'}
+            ${pairingCode}
           </p>
           <p style="color:gray;">Open WhatsApp → Linked Devices → Link with phone number → Enter this code</p>
         </div>
