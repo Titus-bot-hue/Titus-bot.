@@ -35,13 +35,32 @@ let features = existsSync(featuresPath)
       faketyping: true
     };
 
-let statusCache = {};
+// ✅ Function to request pairing code for a given WhatsApp number
+export async function requestPairingCodeForNumber(number) {
+  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, 'main'));
+  const { version } = await fetchLatestBaileysVersion();
+  
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['DansBot', 'Chrome', '122']
+  });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  try {
+    const code = await sock.requestPairingCode(number);
+    console.log(`📱 Pairing code for ${number}: ${code}`);
+    return code;
+  } catch (err) {
+    console.error('❌ Failed to get pairing code:', err);
+    return null;
+  }
+}
 
 export async function startSession(sessionId) {
-  const authPath = join(authFolder, sessionId);
-  const isFirstTime = !existsSync(authPath) || !existsSync(join(authPath, 'creds.json'));
-
-  const { state, saveCreds } = await useMultiFileAuthState(authPath);
+  const { state, saveCreds } = await useMultiFileAuthState(join(authFolder, sessionId));
   const { version } = await fetchLatestBaileysVersion();
 
   console.log(`📦 Baileys v${version.join('.')}`);
@@ -54,19 +73,6 @@ export async function startSession(sessionId) {
   });
 
   sock.ev.on('creds.update', saveCreds);
-
-  // Generate pairing code automatically on first time
-  if (isFirstTime) {
-    try {
-      console.log("⏳ Generating pairing code...");
-      const code = await sock.requestPairingCode(process.env.PAIRING_NUMBER || '');
-      const codePath = join(publicFolder, 'pairing.txt');
-      writeFileSync(codePath, `Your pairing code is: ${code}`);
-      console.log(`🔗 Pairing code generated: ${code}`);
-    } catch (err) {
-      console.error("❌ Failed to generate pairing code:", err);
-    }
-  }
 
   // Connection handler
   sock.ev.on('connection.update', async (update) => {
@@ -81,7 +87,7 @@ export async function startSession(sessionId) {
       });
     }
 
-    // Save Pairing Code Method
+    // Save Pairing Code Method (from WhatsApp Web link option)
     if (pairingCode) {
       const codePath = join(publicFolder, 'pairing.txt');
       writeFileSync(codePath, `Your pairing code is: ${pairingCode}`);
