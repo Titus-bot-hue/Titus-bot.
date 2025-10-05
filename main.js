@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
       </head>
       <body style="text-align:center; padding:40px; font-family:sans-serif; background-color:#f9f9f9;">
-        <h1 style="color:#0a84ff;">🟢 TITUS-BOT QR Code</h1>
+        <h1 style="color:#0a84ff;">🟢 TITUS BOT OT QR Code</h1>
         <p>${qrExists
           ? 'Scan this QR Code to link your WhatsApp to TITUS-BOT Quantum Edition.'
           : 'QR code not yet generated. Please wait...'}</p>
