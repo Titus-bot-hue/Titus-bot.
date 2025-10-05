@@ -3,14 +3,13 @@ const chalk = require('chalk')
 
 //================== PERSONAL LINKS & DETAILS ===================\\
 global.ig = 'https://wa.me/254787100498'
-global.ytname = 'YT: https://www.youtube.com/@TitusMutuku'
 global.owner = ['254787100498']
 global.ownernomer = '254787100498'
-global.socialm = 'GitHub: https://github.com/Titus-bot-hue/Titus-bot'
+global.socialm = 'GitHub: https://github.com/Titus-bot-hue/Titus-bot.'
 global.location = 'Kenya'
 
 //================== SETTING BOT ===============================\\
-global.botname = "TITUS-BOT Quantum Edition"
+global.botname = "TITUS-BOT"
 global.ownernumber = '254787100498'
 global.botnumber = '254787100498'
 global.ownername = 'Titus Mutuku'
@@ -18,7 +17,7 @@ global.ownerNumber = ["254787100498@s.whatsapp.net"]
 global.themeemoji = '🚀'
 global.wm = "TITUS-BOT Quantum Edition"
 global.creator = "254787100498@s.whatsapp.net"
-global.packname = "TITUS-BOT"
+global.packname = "TITUS BOT"
 global.author = "Titus Mutuku"
 
 //================== BEHAVIOR SETTINGS ==========================\\
