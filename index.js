@@ -31,7 +31,7 @@ app.get('/', (req, res) => {
   res.send(`
     <html>
       <body style="text-align:center; padding:40px; font-family: Arial, sans-serif;">
-        <h1>🟢 Titus-bot WhatsApp Connection</h1>
+        <h1>🟢 Titus Bot WhatsApp Connection</h1>
         <p>Use any method below to link your WhatsApp:</p>
 
         <div style="margin-bottom:40px;">
