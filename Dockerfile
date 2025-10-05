@@ -6,7 +6,8 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+# Skip peer conflicts to fix Baileys + Jimp issue
+RUN npm install --legacy-peer-deps
 
 RUN apt-get update && \
     apt-get install -y ffmpeg imagemagick webp && \
