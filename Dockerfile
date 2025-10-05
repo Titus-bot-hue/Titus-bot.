@@ -1,20 +1,19 @@
+# TITUS-BOT Quantum Edition Dockerfile
 
-FROM node:lts-buster
+FROM node:lts-bookworm
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
 
 RUN apt-get update && \
-  apt-get install -y \
-  ffmpeg \
-  imagemagick \
-  webp && \
-  apt-get upgrade -y && \
-  rm -rf /var/lib/apt/lists/*
-
-COPY package.json .
-
-RUN npm install && npm install qrcode-terminal
+    apt-get install -y ffmpeg imagemagick webp && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY . .
 
 EXPOSE 3000
 
-CMD ["node", "index.js", "--server"]
+CMD ["npm", "start"]
