@@ -109,7 +109,7 @@ async function handleIncomingMessage(sock, msg) {
   // Commands
   const commands = {
     '.ping': '🏓 Pong!',
-    '.alive': '✅ DansBot is alive!',
+    '.alive': '✅ Titus-bot is alive!',
     '.status': `📊 Status:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
     '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .shutdown\n• .broadcast <msg>\n• .block <number>\n• .unblock <number>\n• .toggle <feature>`
   };
