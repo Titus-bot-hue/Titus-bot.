@@ -1,5 +1,5 @@
 {
-  "name": "TITUS-BOT",
+  "name": "TITUS-BOT.",
   "version": "10.8.1",
   "description": "TITUS-BOT Quantum Edition — A next-gen multi-device WhatsApp bot by Titus Mutuku.",
   "main": "index.js",
@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": ["TITUS-BOT", "whatsapp-bot", "quantum edition", "multi-device bot"],
+  "keywords": ["TITUS BOT", "whatsapp-bot", "quantum edition", "multi-device bot"],
   "author": "Titus Mutuku",
   "license": "ISC",
   "dependencies": {
