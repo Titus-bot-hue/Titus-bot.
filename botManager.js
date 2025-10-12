@@ -46,7 +46,7 @@ export async function startSession(sessionId, phoneNumber = null) {
     version,
     auth: state,
     printQRInTerminal: false,
-    browser: ['Titus-bot, 'Chrome', '122']
+  browser: ['Titus-bot', 'Chrome', '122']
   });
 
   sock.ev.on('creds.update', saveCreds);
