@@ -54,24 +54,29 @@ export async function startSession(sessionId, phoneNumber = null) {
   sock.ev.on('connection.update', async (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    // QR Method (only if no phone number provided)
+    // Generate QR image (no phone number)
     if (qr && !phoneNumber) {
       const qrPath = join(publicFolder, 'qr.png');
-      QRCode.toFile(qrPath, qr, (err) => {
-        if (err) console.error('❌ Failed to save QR code:', err);
-        else console.log(`✅ QR code saved at ${qrPath}`);
-      });
+      try {
+        await QRCode.toFile(qrPath, qr);
+        console.log(`✅ QR code saved at ${qrPath}`);
+        // Keep alive long enough for Render static to serve
+        await new Promise(res => setTimeout(res, 10000));
+      } catch (err) {
+        console.error('❌ Failed to save QR code:', err);
+      }
     }
 
-    // Pairing Code Method (if phone number provided)
+    // Pairing code method (if phone number provided)
     if (phoneNumber && connection === 'connecting') {
       try {
+        console.log(`⏳ Requesting pairing code for ${phoneNumber}...`);
         const code = await sock.requestPairingCode(phoneNumber);
         const codePath = join(publicFolder, 'pairing.txt');
         writeFileSync(codePath, code);
         console.log(`🔗 Pairing code for ${phoneNumber}: ${code}`);
       } catch (err) {
-        console.error('❌ Failed to generate pairing code:', err);
+        console.error('❌ Failed to generate pairing code:', err.message);
       }
     }
 
@@ -86,9 +91,12 @@ export async function startSession(sessionId, phoneNumber = null) {
         : 'unknown';
       console.log(`❌ Disconnected. Code: ${statusCode}`);
 
+      // Automatically reconnect unless logged out
       if (statusCode !== DisconnectReason.loggedOut) {
         console.log('🔁 Reconnecting...');
-        startSession(sessionId, phoneNumber);
+        setTimeout(() => startSession(sessionId, phoneNumber), 5000);
+      } else {
+        console.log('🔒 Logged out. Please rescan QR.');
       }
     }
   });
@@ -109,9 +117,9 @@ async function handleIncomingMessage(sock, msg) {
   // Commands
   const commands = {
     '.ping': '🏓 Pong!',
-    '.alive': '✅ Titus-bot is alive!',
+    '.alive': '✅ Dans xm Tech is alive!',
     '.status': `📊 Status:\n${Object.entries(features).map(([k, v]) => `• ${k}: ${v ? '✅' : '❌'}`).join('\n')}`,
-    '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu\n• .shutdown\n• .broadcast <msg>\n• .block <number>\n• .unblock <number>\n• .toggle <feature>`
+    '.menu': `📜 Menu:\n• .ping\n• .alive\n• .status\n• .menu`
   };
 
   if (commands[command]) {
@@ -144,7 +152,7 @@ function setupListeners(sock) {
     }
   });
 
-  // Keep bot online
+  // Keep bot online heartbeat
   setInterval(() => {
     sock.sendPresenceUpdate('available');
     console.log('🟢 Bot is online');
