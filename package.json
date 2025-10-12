@@ -22,7 +22,10 @@
     "file-type": "^19.0.0",
     "fs-extra": "^11.2.0",
     "google-it": "^1.6.4",
-    "jimp": "^0.16.13",
+    "dependencies": {
+  "jimp": "^1.6.0",
+  "@whis/workflows/npm-grunt.yml (da0ec7b)](https://github.com/Titus-bot-hue/Titus-bot./blob/da0ec7bc7149a0f84f39fbffc462cf1e5e112ac6/.github/workflows/npm-grunt.yml)keysockets/baileys": "^6.7.20",
+      
     "jpeg-js": "^0.4.4",
     "jsqr": "^1.4.0",
     "moment-timezone": "^0.5.45",
@@ -38,7 +41,7 @@
     "uuid": "^9.0.1",
     "yt-search": "^2.11.0"
   },
-  "devDependencies": {
+  "devDependencies": {npm install
     "grunt": "^1.6.1"
   }
 }
